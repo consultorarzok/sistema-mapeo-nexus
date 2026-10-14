@@ -67,28 +67,26 @@ main{max-width:1100px;margin:0 auto;padding:2rem 1.5rem 4rem;}
 .tab-panel.active{display:block;}
 
 /* ---------- Inicio ---------- */
-.stat-grid{display:grid;grid-template-columns:1fr;gap:1.1rem;margin-top:1.8rem;max-width:460px;}
+main:has(#tab-inicio.active){padding-top:3rem;}
+.stat-grid{display:grid;grid-template-columns:1fr;gap:1.4rem;max-width:420px;margin:0 auto;}
 .stat-card{
-  background:var(--surface);border:1px solid var(--border);border-radius:18px;
-  padding:1.3rem 1.5rem;box-shadow:var(--shadow);
+  position:relative;overflow:hidden;
+  background:var(--surface);border:1px solid var(--border);border-radius:20px;
+  padding:1.5rem 1.7rem 1.1rem;box-shadow:var(--shadow);
+  display:flex;flex-direction:column;align-items:center;text-align:center;gap:.2rem;
 }
-.stat-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem;}
-.stat-label{font-weight:700;font-family:'Ambit',sans-serif;font-size:.95rem;}
-.stat-number{font-family:'Ambit',sans-serif;font-size:2.6rem;font-weight:700;color:var(--accent);line-height:1;}
-.stat-sub{color:var(--muted);font-size:.8rem;margin-top:.3rem;}
-.pct-badge{
-  font-family:'JetBrains Mono',monospace;font-weight:700;font-size:.78rem;
-  padding:.25em .7em;border-radius:999px;
-}
-.pct-badge--base{background:rgba(39,174,96,.15);color:#1E8449;}
-.pct-badge--b{background:rgba(235,87,87,.15);color:#C0392B;}
+.stat-label{font-weight:700;font-family:'Ambit',sans-serif;font-size:1rem;}
+.stat-pct{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:1.3rem;color:var(--accent);}
+.stat-card--b .stat-pct{color:var(--c-b);}
+.stat-card--general .stat-pct{color:var(--c-general);}
+.stat-number{font-family:'Ambit',sans-serif;font-size:3rem;font-weight:700;color:var(--ink);line-height:1;margin-top:.1rem;}
+.stat-spark{width:100%;height:34px;margin-top:.6rem;opacity:.85;}
 
-.legend-card{
-  margin-top:1.6rem;max-width:460px;background:var(--surface-2);border:1px solid var(--border);
-  border-radius:14px;padding:1rem 1.2rem;
-}
-.legend-title{font-weight:700;font-size:.8rem;margin-bottom:.5rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-family:'JetBrains Mono',monospace;}
-.legend-row{display:flex;align-items:center;gap:.6rem;font-size:.82rem;padding:.2rem 0;}
+.donut-card{display:flex;justify-content:center;margin-top:2.2rem;}
+.donut{width:200px;height:200px;}
+#donut-arc{transition:stroke-dasharray 1.1s cubic-bezier(.3,.9,.2,1);}
+.donut-label{font-family:'Ambit',sans-serif;font-size:1.4rem;font-weight:700;fill:var(--ink);}
+.donut-sub{font-family:'JetBrains Mono',monospace;font-size:.52rem;fill:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
 
 .dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none;}
 .dot-inst{background:var(--c-inst);}
@@ -162,6 +160,21 @@ main{max-width:1100px;margin:0 auto;padding:2rem 1.5rem 4rem;}
 .map-legend{font-size:.8rem;font-weight:600;display:flex;align-items:center;}
 .map-note{font-size:.72rem;color:var(--muted);font-family:'JetBrains Mono',monospace;}
 #leaflet-map{height:420px;border-radius:16px;border:1px solid var(--border);box-shadow:var(--shadow);}
+
+.selected-person-card{
+  margin-top:1.2rem;background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  padding:1.3rem 1.5rem;box-shadow:var(--shadow);animation:fadeIn .25s ease;
+}
+.selected-person-card .sp-head{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.8rem;}
+.selected-person-card .sp-name{font-family:'Ambit',sans-serif;font-weight:700;font-size:1.15rem;}
+.selected-person-card .sp-codigo{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--accent);background:var(--surface-2);border-radius:999px;padding:.25em .75em;}
+.selected-person-card .sp-fields{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:.6rem 1.4rem;font-size:.84rem;color:var(--muted);
+}
+.selected-person-card .sp-fields b{display:block;color:var(--ink);font-weight:600;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;font-family:'JetBrains Mono',monospace;margin-bottom:.15rem;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+.field-hint{font-size:.72rem;color:var(--muted);margin-top:.2rem;max-width:260px;}
 
 /* ---------- Buscador ---------- */
 .codigo-results{margin-top:1.8rem;display:flex;flex-direction:column;gap:1rem;}

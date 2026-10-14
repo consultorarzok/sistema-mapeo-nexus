@@ -29,36 +29,34 @@
 
   <!-- ===================== INICIO ===================== -->
   <section id="tab-inicio" class="tab-panel active">
-    <div class="eyebrow">Panel general</div>
-    <h1>Estado del relevamiento</h1>
-    <p class="lede">Conteo de personas cargadas en cada planilla del padrón.</p>
-
     <div class="stat-grid">
       <div class="stat-card stat-card--general">
-        <div class="stat-top">
-          <span class="stat-label">Registro General</span>
-          <span class="pct-badge pct-badge--base">100%</span>
-        </div>
-        <div class="stat-number" id="stat-general">0</div>
-        <div class="stat-sub">personas visitadas y cargadas</div>
+        <span class="stat-label">Registro General</span>
+        <span class="stat-pct" id="stat-general-pct">100%</span>
+        <span class="stat-number" id="stat-general">0</span>
+        <svg class="stat-spark" viewBox="0 0 100 34" preserveAspectRatio="none" aria-hidden="true">
+          <polyline id="spark-general" fill="none" style="stroke:var(--c-general)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" points=""/>
+        </svg>
       </div>
 
       <div class="stat-card stat-card--b">
-        <div class="stat-top">
-          <span class="stat-label">Registro B</span>
-          <span class="pct-badge pct-badge--b" id="stat-b-pct">0%</span>
-        </div>
-        <div class="stat-number" id="stat-b">0</div>
-        <div class="stat-sub">respondiendo / organizando actividades</div>
+        <span class="stat-label">Registro B</span>
+        <span class="stat-pct" id="stat-b-pct">0%</span>
+        <span class="stat-number" id="stat-b">0</span>
+        <svg class="stat-spark" viewBox="0 0 100 34" preserveAspectRatio="none" aria-hidden="true">
+          <polyline id="spark-b" fill="none" style="stroke:var(--c-b)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" points=""/>
+        </svg>
       </div>
     </div>
 
-    <div class="legend-card">
-      <div class="legend-title">Referencias de color</div>
-      <div class="legend-row"><span class="dot dot-inst"></span> Instituciones</div>
-      <div class="legend-row"><span class="dot dot-point"></span> Personas dentro de una institución</div>
-      <div class="legend-row"><span class="dot dot-general"></span> Puntos en el mapa — Planilla General</div>
-      <div class="legend-row"><span class="dot dot-b"></span> Puntos en el mapa — Planilla B</div>
+    <div class="donut-card">
+      <svg viewBox="0 0 120 120" class="donut">
+        <circle cx="60" cy="60" r="50" fill="none" style="stroke:var(--surface-2)" stroke-width="14"/>
+        <circle id="donut-arc" cx="60" cy="60" r="50" fill="none" style="stroke:var(--c-b)" stroke-width="14"
+          stroke-linecap="round" stroke-dasharray="0 314" transform="rotate(-90 60 60)"/>
+        <text x="60" y="56" text-anchor="middle" class="donut-label" id="donut-pct">0%</text>
+        <text x="60" y="72" text-anchor="middle" class="donut-sub">de B sobre General</text>
+      </svg>
     </div>
   </section>
 
@@ -92,9 +90,10 @@
           <span class="dot dot-general"></span> Planilla General
           <span class="dot dot-b" style="margin-left:1rem;"></span> Planilla B
         </div>
-        <div class="map-note">Geolocalización aproximada (OpenStreetMap) — etapa de prueba</div>
+        <div class="map-note">Geolocalización con OpenStreetMap · tocá un punto para ver a la persona</div>
       </div>
       <div id="leaflet-map"></div>
+      <div id="selected-person-card" class="selected-person-card" hidden></div>
     </div>
   </section>
 
@@ -105,10 +104,10 @@
     <p class="lede">Elegí un código interno para ver todas las personas cargadas bajo ese código.</p>
 
     <div class="field field--inline">
-      <label for="sel-codigo">Código</label>
-      <select id="sel-codigo">
-        <option value="">— Elegir código —</option>
-      </select>
+      <label for="input-codigo">Código</label>
+      <input id="input-codigo" type="text" list="codigos-list" placeholder="Escribí o elegí un código…" autocomplete="off">
+      <datalist id="codigos-list"></datalist>
+      <span class="field-hint">Se busca en vivo cruzando con el padrón — la lista de códigos no está fija, puede crecer.</span>
     </div>
 
     <div id="codigo-results" class="codigo-results"></div>

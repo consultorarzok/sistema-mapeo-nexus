@@ -11,8 +11,22 @@
     markerLayer: null,
   };
 
-  const GEOCODE_CACHE_KEY = "nexus_geocode_cache_v1";
+  const GEOCODE_CACHE_KEY = "nexus_geocode_cache_v2";
   const OBS_OVERRIDES_KEY = "nexus_obs_overrides_v1"; // demo-only, guarda observaciones locales hasta que se conecte el Google Sheet real
+
+  // Departamento (real, provincia de Jujuy) -> localidad real para georreferenciar.
+  // El Departamento "Dr. Manuel Belgrano" no es en sí una ciudad: su cabecera es San Salvador de Jujuy.
+  const DEPTO_LOCALITY = {
+    "Dr. Manuel Belgrano": "San Salvador de Jujuy",
+    "El Carmen": "El Carmen",
+    "Palpalá": "Palpalá",
+    "Ledesma": "Libertador General San Martín",
+    "Tilcara": "Tilcara",
+    "Humahuaca": "Humahuaca",
+    "San Antonio": "San Antonio",
+    "Tumbaya": "Tumbaya",
+    "Santa Bárbara": "Santa Bárbara",
+  };
 
   // ---------------------------------------------------------------
   // Utilidades
@@ -65,14 +79,15 @@
 
   // ---------------------------------------------------------------
   // Geocoding (Nominatim / OpenStreetMap) — etapa gratuita, sin API key.
-  // Más adelante se reemplaza por Google Maps API (pago) sin tocar el resto del front.
+  // Más adelante se reemplaza por Google Maps API (pago) sin tocar el resto del front:
+  // alcanza con cambiar esta función por una que llame a la Geocoding API de Google.
   // ---------------------------------------------------------------
   async function geocode(address) {
     const cache = loadGeocodeCache();
     if (cache[address]) return cache[address];
     try {
       const url =
-        "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" +
+        "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ar&q=" +
         encodeURIComponent(address);
       const res = await fetch(url, { headers: { Accept: "application/json" } });
       const data = await res.json();
@@ -88,15 +103,16 @@
     return null;
   }
 
-  function fullAddress(p, useInstitucion) {
-    if (useInstitucion) {
-      return p["Direccion de Institucion"] + ", " + p.Departamento + ", Jujuy, Argentina";
-    }
-    return p.Direccion + " " + p.Numero + ", " + p.Departamento + ", Jujuy, Argentina";
+  function locality(p) {
+    return DEPTO_LOCALITY[p.Departamento] || p.Departamento;
+  }
+
+  function fullAddress(p) {
+    return p.Direccion + " " + p.Numero + ", " + locality(p) + ", Jujuy, Argentina";
   }
 
   function googleMapsUrl(p) {
-    const q = p.Direccion + " " + p.Numero + ", " + p.Departamento + ", Jujuy, Argentina";
+    const q = p.Direccion + " " + p.Numero + ", " + locality(p) + ", Jujuy, Argentina";
     return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q);
   }
 
@@ -131,15 +147,70 @@
   }
 
   // ---------------------------------------------------------------
-  // Inicio
+  // Inicio — números animados + sparkline + dona
   // ---------------------------------------------------------------
+  function animateCount(el, to, duration) {
+    const start = performance.now();
+    function tick(now) {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = Math.round(eased * to);
+      if (t < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function buildSparkline(el, seedSeries) {
+    const w = 100,
+      h = 34;
+    const n = seedSeries.length;
+    const max = Math.max(...seedSeries);
+    const min = Math.min(...seedSeries);
+    const range = max - min || 1;
+    const points = seedSeries
+      .map((v, i) => {
+        const x = (i / (n - 1)) * w;
+        const y = h - ((v - min) / range) * (h - 6) - 3;
+        return x.toFixed(1) + "," + y.toFixed(1);
+      })
+      .join(" ");
+    el.setAttribute("points", points);
+  }
+
+  function cumulativeSeries(count) {
+    // serie "acumulada hasta ahora" a partir del orden de carga, para dar sensación de evolución/movimiento
+    const series = [];
+    const steps = Math.min(12, Math.max(4, count));
+    for (let i = 1; i <= steps; i++) {
+      series.push(Math.round((count * i) / steps));
+    }
+    return series;
+  }
+
   function renderInicio() {
     const total = STATE.general.length;
     const totalB = STATE.registroB.length;
-    const pct = total ? ((totalB / total) * 100).toFixed(1) : "0.0";
-    document.getElementById("stat-general").textContent = total;
-    document.getElementById("stat-b").textContent = totalB;
-    document.getElementById("stat-b-pct").textContent = pct + "%";
+    const pct = total ? (totalB / total) * 100 : 0;
+
+    document.getElementById("stat-general-pct").textContent = "100%";
+    document.getElementById("stat-b-pct").textContent = pct.toFixed(1) + "%";
+
+    animateCount(document.getElementById("stat-general"), total, 900);
+    animateCount(document.getElementById("stat-b"), totalB, 900);
+
+    buildSparkline(document.getElementById("spark-general"), cumulativeSeries(total));
+    buildSparkline(document.getElementById("spark-b"), cumulativeSeries(totalB));
+
+    const circumference = 2 * Math.PI * 50; // r=50
+    const arcLen = (pct / 100) * circumference;
+    const arc = document.getElementById("donut-arc");
+    requestAnimationFrame(() => {
+      arc.setAttribute("stroke-dasharray", arcLen.toFixed(1) + " " + circumference.toFixed(1));
+    });
+    animateCount(document.getElementById("donut-pct"), Math.round(pct), 1100);
+    setTimeout(() => {
+      document.getElementById("donut-pct").textContent = pct.toFixed(1) + "%";
+    }, 1150);
   }
 
   // ---------------------------------------------------------------
@@ -253,6 +324,7 @@
     document.getElementById("inst-detail").hidden = true;
     document.getElementById("inst-detail").innerHTML = "";
     document.getElementById("map-wrap").hidden = true;
+    hideSelectedPersonCard();
   }
 
   function renderInstDetail(people) {
@@ -277,80 +349,27 @@
         .join("") +
       "</div>" +
       '<div class="planilla-btns">' +
-      '<button class="btn btn-general" id="btn-planilla-general">Planilla General</button>' +
-      '<button class="btn btn-b" id="btn-planilla-b">Planilla B</button>' +
-      "</div>" +
-      '<div id="person-grid" class="person-grid"></div>';
+      '<button class="btn btn-general" id="btn-planilla-general">Planilla General (' +
+      people.length +
+      ")</button>" +
+      '<button class="btn btn-b" id="btn-planilla-b">Planilla B (' +
+      people.filter((p) => p._enB).length +
+      ")</button>" +
+      "</div>";
 
     document.getElementById("btn-planilla-general").addEventListener("click", () => {
-      renderPersonGrid(people, "general");
       showMapFor(people, "general");
     });
     document.getElementById("btn-planilla-b").addEventListener("click", () => {
-      const matches = people.filter((p) => p._enB);
-      renderPersonGrid(matches, "b");
-      showMapFor(matches, "b");
+      showMapFor(
+        people.filter((p) => p._enB),
+        "b"
+      );
     });
   }
 
-  function personFieldsHtml(p) {
-    return (
-      '<div class="person-fields">' +
-      "<div><b>Departamento</b>" +
-      p.Departamento +
-      "</div>" +
-      "<div><b>Distrito</b>" +
-      p.Distrito +
-      "</div>" +
-      "<div><b>Dirección</b>" +
-      p.Direccion +
-      " " +
-      p.Numero +
-      "</div>" +
-      "<div><b>Institución</b>" +
-      p.Institucion +
-      "</div>" +
-      "<div><b>Dirección institución</b>" +
-      p["Direccion de Institucion"] +
-      "</div>" +
-      "</div>"
-    );
-  }
-
-  function renderPersonGrid(people, kind) {
-    const grid = document.getElementById("person-grid");
-    if (!people.length) {
-      grid.innerHTML =
-        '<div class="empty-hint">' +
-        (kind === "b"
-          ? "Ninguna de estas personas está en Registro B todavía."
-          : "No hay personas para mostrar.") +
-        "</div>";
-      return;
-    }
-    grid.innerHTML = people
-      .map(
-        (p) =>
-          '<div class="person-card ' +
-          (kind === "b" ? "is-b" : "is-general") +
-          '">' +
-          '<div class="person-head">' +
-          '<span class="person-name">' +
-          p.Codigo +
-          " — " +
-          p.Nombre +
-          " " +
-          p.Apellido +
-          "</span>" +
-          "</div>" +
-          personFieldsHtml(p) +
-          "</div>"
-      )
-      .join("");
-  }
-
   // ---------------------------------------------------------------
-  // Mapa Leaflet
+  // Mapa Leaflet — los datos de cada persona se ven recién al tocar su punto
   // ---------------------------------------------------------------
   function ensureMap() {
     if (STATE.map) return STATE.map;
@@ -367,17 +386,90 @@
     return L.divIcon({
       className: "",
       html:
-        '<div style="width:16px;height:16px;border-radius:50%;background:' +
+        '<div style="width:18px;height:18px;border-radius:50%;background:' +
         color +
-        ';border:2px solid white;box-shadow:0 0 0 1px rgba(0,0,0,.25);"></div>',
-      iconSize: [16, 16],
-      iconAnchor: [8, 8],
+        ';border:2.5px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
     });
+  }
+
+  function popupHtml(p) {
+    return (
+      '<div class="map-popup">' +
+      "<b>" +
+      p.Codigo +
+      " — " +
+      p.Nombre +
+      " " +
+      p.Apellido +
+      "</b><br>" +
+      "<small>" +
+      p.Departamento +
+      " · " +
+      p.Distrito +
+      "</small><br>" +
+      p.Direccion +
+      " " +
+      p.Numero +
+      "<br>" +
+      "<i>" +
+      p.Institucion +
+      "</i>" +
+      "</div>"
+    );
+  }
+
+  function showSelectedPersonCard(p) {
+    const box = document.getElementById("selected-person-card");
+    box.hidden = false;
+    box.innerHTML =
+      '<div class="sp-head"><span class="sp-name">' +
+      p.Nombre +
+      " " +
+      p.Apellido +
+      '</span><span class="sp-codigo">' +
+      p.Codigo +
+      (p._enB ? " · en Registro B" : "") +
+      "</span></div>" +
+      '<div class="sp-fields">' +
+      "<div><b>Departamento</b>" +
+      p.Departamento +
+      "</div>" +
+      "<div><b>Distrito</b>" +
+      p.Distrito +
+      "</div>" +
+      "<div><b>Dirección</b>" +
+      p.Direccion +
+      " " +
+      p.Numero +
+      "</div>" +
+      "<div><b>Orden</b>" +
+      p.Orden +
+      "</div>" +
+      "<div><b>Institución</b>" +
+      p.Institucion +
+      "</div>" +
+      "<div><b>Dirección institución</b>" +
+      p["Direccion de Institucion"] +
+      "</div>" +
+      "<div><b>Observación</b>" +
+      (getObservacion(p) || "—") +
+      "</div>" +
+      "</div>";
+    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function hideSelectedPersonCard() {
+    const box = document.getElementById("selected-person-card");
+    box.hidden = true;
+    box.innerHTML = "";
   }
 
   async function showMapFor(people, kind) {
     const wrap = document.getElementById("map-wrap");
     wrap.hidden = false;
+    hideSelectedPersonCard();
     const map = ensureMap();
     STATE.markerLayer.clearLayers();
     setTimeout(() => map.invalidateSize(), 50);
@@ -385,14 +477,13 @@
     const color = kind === "b" ? "#EB5757" : "#27AE60";
     const bounds = [];
     for (const p of people) {
-      const coords = await geocode(fullAddress(p, false));
+      const coords = await geocode(fullAddress(p));
       if (!coords) continue;
       bounds.push([coords.lat, coords.lng]);
-      L.marker([coords.lat, coords.lng], { icon: coloredIcon(color) })
-        .bindPopup(
-          "<b>" + p.Nombre + " " + p.Apellido + "</b><br>" + p.Institucion + "<br>" + p.Direccion + " " + p.Numero
-        )
+      const marker = L.marker([coords.lat, coords.lng], { icon: coloredIcon(color) })
+        .bindPopup(popupHtml(p))
         .addTo(STATE.markerLayer);
+      marker.on("click", () => showSelectedPersonCard(p));
     }
     if (bounds.length) {
       map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
@@ -400,27 +491,43 @@
   }
 
   // ---------------------------------------------------------------
-  // Buscador por código
+  // Buscador por código — input libre (no desplegable fijo): hoy filtra
+  // contra los datos embebidos, el día que esto hable con el Google Sheet
+  // en vivo la lista de códigos posibles puede crecer sin tocar el front.
   // ---------------------------------------------------------------
-  function populateCodigoSelect() {
-    const sel = document.getElementById("sel-codigo");
+  function populateCodigoDatalist() {
+    const list = document.getElementById("codigos-list");
     const codigos = uniqueSorted(STATE.general.map((p) => p.Codigo)).sort((a, b) => {
       return parseInt(a.replace(/\D/g, ""), 10) - parseInt(b.replace(/\D/g, ""), 10);
     });
     codigos.forEach((c) => {
       const opt = document.createElement("option");
       opt.value = c;
-      opt.textContent = c;
-      sel.appendChild(opt);
+      list.appendChild(opt);
     });
-    sel.addEventListener("change", () => renderCodigoResults(sel.value));
+
+    const input = document.getElementById("input-codigo");
+    input.addEventListener("input", () => {
+      renderCodigoResults(input.value.trim());
+    });
   }
 
-  function renderCodigoResults(codigo) {
+  function matchesCodigo(valorBuscado, codigoReal) {
+    const a = normalize(valorBuscado);
+    const b = normalize(codigoReal);
+    if (!a) return false;
+    // admite "5", "codigo 5", "código 5"
+    const soloNumero = a.replace(/[^\d]/g, "");
+    const numeroReal = b.replace(/[^\d]/g, "");
+    if (soloNumero && soloNumero === numeroReal && /^(codigo|código)?\s*\d+$/i.test(a)) return true;
+    return b.includes(a);
+  }
+
+  function renderCodigoResults(valor) {
     const wrap = document.getElementById("codigo-results");
     wrap.innerHTML = "";
-    if (!codigo) return;
-    const people = STATE.general.filter((p) => p.Codigo === codigo);
+    if (!valor) return;
+    const people = STATE.general.filter((p) => matchesCodigo(valor, p.Codigo));
     if (!people.length) {
       wrap.innerHTML = '<div class="empty-hint">No hay personas cargadas con ese código.</div>';
       return;
@@ -504,7 +611,7 @@
     populateDeptoSelect();
     populateDistritoSelect();
     renderInstGrid();
-    populateCodigoSelect();
+    populateCodigoDatalist();
   }
 
   document.addEventListener("DOMContentLoaded", init);
