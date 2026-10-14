@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema de Mapeo Nexus</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none"><path d="M12 2 2 7v10l10 5 10-5V7L12 2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 12v10M12 12 2 7M12 12l10-5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    </span>
+    <span>Sistema de Mapeo <b>Nexus</b></span>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button class="tab-btn active" data-tab="inicio" role="tab">Inicio</button>
+    <button class="tab-btn" data-tab="mapa" role="tab">Mapa</button>
+    <button class="tab-btn" data-tab="buscador" role="tab">Buscador por código</button>
+  </nav>
+  <span class="demo-tag">DEMO — datos ficticios</span>
+</header>
+
+<main>
+
+  <!-- ===================== INICIO ===================== -->
+  <section id="tab-inicio" class="tab-panel active">
+    <div class="eyebrow">Panel general</div>
+    <h1>Estado del relevamiento</h1>
+    <p class="lede">Conteo de personas cargadas en cada planilla del padrón.</p>
+
+    <div class="stat-grid">
+      <div class="stat-card stat-card--general">
+        <div class="stat-top">
+          <span class="stat-label">Registro General</span>
+          <span class="pct-badge pct-badge--base">100%</span>
+        </div>
+        <div class="stat-number" id="stat-general">0</div>
+        <div class="stat-sub">personas visitadas y cargadas</div>
+      </div>
+
+      <div class="stat-card stat-card--b">
+        <div class="stat-top">
+          <span class="stat-label">Registro B</span>
+          <span class="pct-badge pct-badge--b" id="stat-b-pct">0%</span>
+        </div>
+        <div class="stat-number" id="stat-b">0</div>
+        <div class="stat-sub">respondiendo / organizando actividades</div>
+      </div>
+    </div>
+
+    <div class="legend-card">
+      <div class="legend-title">Referencias de color</div>
+      <div class="legend-row"><span class="dot dot-inst"></span> Instituciones</div>
+      <div class="legend-row"><span class="dot dot-point"></span> Personas dentro de una institución</div>
+      <div class="legend-row"><span class="dot dot-general"></span> Puntos en el mapa — Planilla General</div>
+      <div class="legend-row"><span class="dot dot-b"></span> Puntos en el mapa — Planilla B</div>
+    </div>
+  </section>
+
+  <!-- ===================== MAPA ===================== -->
+  <section id="tab-mapa" class="tab-panel">
+    <div class="eyebrow">Explorar</div>
+    <h1>Departamentos, distritos e instituciones</h1>
+
+    <div class="filter-bar">
+      <div class="field">
+        <label for="sel-depto">Departamento</label>
+        <select id="sel-depto">
+          <option value="">— Elegir departamento —</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="sel-distrito">Distrito</label>
+        <select id="sel-distrito" disabled>
+          <option value="">— Elegir distrito —</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="inst-grid" class="inst-grid"></div>
+
+    <div id="inst-detail" class="inst-detail" hidden></div>
+
+    <div id="map-wrap" class="map-wrap" hidden>
+      <div class="map-head">
+        <div class="map-legend">
+          <span class="dot dot-general"></span> Planilla General
+          <span class="dot dot-b" style="margin-left:1rem;"></span> Planilla B
+        </div>
+        <div class="map-note">Geolocalización aproximada (OpenStreetMap) — etapa de prueba</div>
+      </div>
+      <div id="leaflet-map"></div>
+    </div>
+  </section>
+
+  <!-- ===================== BUSCADOR ===================== -->
+  <section id="tab-buscador" class="tab-panel">
+    <div class="eyebrow">Consulta</div>
+    <h1>Buscador por código</h1>
+    <p class="lede">Elegí un código interno para ver todas las personas cargadas bajo ese código.</p>
+
+    <div class="field field--inline">
+      <label for="sel-codigo">Código</label>
+      <select id="sel-codigo">
+        <option value="">— Elegir código —</option>
+      </select>
+    </div>
+
+    <div id="codigo-results" class="codigo-results"></div>
+  </section>
+
+</main>
+
+<footer class="footfoot">
+  Sistema de Mapeo Nexus · uso interno · datos de carga manual
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
