@@ -91,6 +91,12 @@
 
     <div class="mapa-layout">
       <div class="mapa-panel">
+        <div class="field inst-search">
+          <label for="inst-search-input">Buscar institución</label>
+          <input id="inst-search-input" type="text" autocomplete="off" placeholder="Escribí una palabra: escuela, minero, hospital…" role="combobox" aria-expanded="false" aria-controls="inst-suggest" />
+          <ul id="inst-suggest" class="inst-suggest" role="listbox" hidden></ul>
+        </div>
+
         <div class="filter-bar">
           <div class="field">
             <label for="sel-depto">Departamento</label>

@@ -282,6 +282,141 @@
     };
   }
 
+
+  // ---------------------------------------------------------------
+  // Buscador de instituciones con sugerencias (todas las palabras, en cualquier orden)
+  // ---------------------------------------------------------------
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+
+  function highlightWords(text, words) {
+    const norm = normalize(text);
+    const mark = new Array(text.length).fill(false);
+    // normalize() quita tildes sin cambiar el largo de cada letra, así que los índices coinciden
+    if (norm.length === text.length) {
+      words.forEach((w) => {
+        let i = norm.indexOf(w);
+        while (i !== -1) {
+          for (let k = i; k < i + w.length; k++) mark[k] = true;
+          i = norm.indexOf(w, i + w.length);
+        }
+      });
+    }
+    let out = "";
+    let open = false;
+    for (let i = 0; i < text.length; i++) {
+      if (mark[i] && !open) { out += "<mark>"; open = true; }
+      if (!mark[i] && open) { out += "</mark>"; open = false; }
+      out += escapeHtml(text[i]);
+    }
+    return open ? out + "</mark>" : out;
+  }
+
+  function institutionIndex() {
+    const map = new Map();
+    STATE.general.forEach((p) => {
+      if (!p.Institucion) return;
+      const key = p.Institucion + "||" + p.Departamento;
+      let e = map.get(key);
+      if (!e) {
+        e = { name: p.Institucion, depto: p.Departamento, distritos: new Set(), count: 0, norm: normalize(p.Institucion) };
+        map.set(key, e);
+      }
+      e.distritos.add(p.Distrito);
+      e.count++;
+    });
+    return Array.from(map.values());
+  }
+
+  function goToInstitution(entry) {
+    const selD = document.getElementById("sel-depto");
+    selD.value = entry.depto;
+    STATE.selectedDepto = entry.depto;
+    STATE.selectedDistrito = "";
+    populateDistritoSelect();
+    renderInstGrid();
+    clearDetail();
+    renderInstitutionMarkers();
+    const people = scopedPeople().filter((p) => p.Institucion === entry.name);
+    selectInstitucion(entry.name, people);
+  }
+
+  function setupInstSearch() {
+    const input = document.getElementById("inst-search-input");
+    const list = document.getElementById("inst-suggest");
+    let items = [];
+    let active = -1;
+
+    function close() {
+      list.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+      active = -1;
+    }
+    function setActive(i) {
+      active = i;
+      Array.from(list.children).forEach((li, k) => li.classList.toggle("active", k === i));
+      const el = list.children[i];
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+    }
+    function choose(entry) {
+      input.value = entry.name;
+      close();
+      goToInstitution(entry);
+    }
+    function render() {
+      const words = normalize(input.value).split(/\s+/).filter(Boolean);
+      if (!words.length) { close(); return; }
+      items = institutionIndex()
+        .filter((e) => words.every((w) => e.norm.includes(w)))
+        .sort((a, b) => {
+          const sa = a.norm.startsWith(words[0]) ? 0 : 1;
+          const sb = b.norm.startsWith(words[0]) ? 0 : 1;
+          return sa - sb || a.name.localeCompare(b.name, "es");
+        });
+      const total = items.length;
+      items = items.slice(0, 10);
+      list.innerHTML = "";
+      if (!total) {
+        list.innerHTML = '<li class="sg-empty">No hay instituciones con esas palabras</li>';
+      } else {
+        items.forEach((e, k) => {
+          const li = document.createElement("li");
+          li.setAttribute("role", "option");
+          li.innerHTML =
+            highlightWords(e.name, words) +
+            '<span class="sg-sub">' + escapeHtml(e.depto) + " · " + escapeHtml(Array.from(e.distritos).join(", ")) +
+            " · " + e.count + " persona(s)</span>";
+          li.addEventListener("mousedown", (ev) => { ev.preventDefault(); choose(e); });
+          list.appendChild(li);
+        });
+        if (total > items.length) {
+          const li = document.createElement("li");
+          li.className = "sg-empty";
+          li.textContent = "Y " + (total - items.length) + " más — escribí más palabras para acotar";
+          list.appendChild(li);
+        }
+      }
+      list.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+      active = -1;
+    }
+
+    input.addEventListener("input", render);
+    input.addEventListener("focus", () => { if (input.value.trim()) render(); });
+    input.addEventListener("blur", () => setTimeout(close, 120));
+    input.addEventListener("keydown", (ev) => {
+      if (list.hidden) return;
+      if (ev.key === "ArrowDown") { ev.preventDefault(); setActive(Math.min(active + 1, items.length - 1)); }
+      else if (ev.key === "ArrowUp") { ev.preventDefault(); setActive(Math.max(active - 1, 0)); }
+      else if (ev.key === "Enter") {
+        ev.preventDefault();
+        const e = items[active >= 0 ? active : 0];
+        if (e) choose(e);
+      } else if (ev.key === "Escape") close();
+    });
+  }
+
   function scopedPeople() {
     return STATE.general.filter((p) => {
       if (STATE.selectedDepto && p.Departamento !== STATE.selectedDepto) return false;
@@ -871,6 +1006,7 @@
     await loadData();
     renderInicio();
     populateDeptoSelect();
+    setupInstSearch();
     populateDistritoSelect();
     renderInstGrid();
     populateCodigoDatalist();
