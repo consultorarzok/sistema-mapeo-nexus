@@ -28,7 +28,8 @@ const glowTex = textureLoader.load("assets/glow.png");
 const ringTex = textureLoader.load("assets/ring-texture.png");
 
 // --- Núcleo / mundo (esfera) -------------------------------------------
-const globeGeo = new THREE.SphereGeometry(1.5, 64, 64);
+const CORE_RADIUS = 1.0; // antes 1.5 — mundo más chico
+const globeGeo = new THREE.SphereGeometry(CORE_RADIUS, 64, 64);
 const globeMat = new THREE.MeshStandardMaterial({
   map: globeTex,
   emissive: new THREE.Color(0x0a2a4a),
@@ -41,7 +42,7 @@ const globe = new THREE.Mesh(globeGeo, globeMat);
 scene.add(globe);
 
 // capa de "aura" sutil, esfera levemente más grande, transparente
-const auraGeo = new THREE.SphereGeometry(1.56, 48, 48);
+const auraGeo = new THREE.SphereGeometry(CORE_RADIUS * 1.04, 48, 48);
 const auraMat = new THREE.MeshBasicMaterial({
   color: 0x44b1ff,
   transparent: true,
@@ -51,7 +52,9 @@ const auraMat = new THREE.MeshBasicMaterial({
 scene.add(new THREE.Mesh(auraGeo, auraMat));
 
 // --- Anillo tipo Saturno, inclinado --------------------------------------
-const ringGeo = new THREE.RingGeometry(1.9, 2.5, 96);
+const RING_INNER = CORE_RADIUS * 1.267;
+const RING_OUTER = CORE_RADIUS * 1.667;
+const ringGeo = new THREE.RingGeometry(RING_INNER, RING_OUTER, 96);
 // UVs radiales para que el degradé del ring-texture se vea correcto
 {
   const pos = ringGeo.attributes.position;
@@ -59,7 +62,7 @@ const ringGeo = new THREE.RingGeometry(1.9, 2.5, 96);
   const v3 = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     v3.fromBufferAttribute(pos, i);
-    const u = (v3.length() - 1.9) / (2.5 - 1.9);
+    const u = (v3.length() - RING_INNER) / (RING_OUTER - RING_INNER);
     uv.setXY(i, u, 0.5);
   }
 }
@@ -79,7 +82,7 @@ scene.add(ring);
 const PARTICLE_COUNT = 260;
 const particlePositions = new Float32Array(PARTICLE_COUNT * 3);
 for (let i = 0; i < PARTICLE_COUNT; i++) {
-  const r = 2.6 + Math.random() * 1.8;
+  const r = CORE_RADIUS * 1.73 + Math.random() * CORE_RADIUS * 1.2;
   const theta = Math.random() * Math.PI * 2;
   const phi = Math.acos(2 * Math.random() - 1);
   particlePositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
@@ -99,6 +102,89 @@ const particleMat = new THREE.PointsMaterial({
 });
 const particles = new THREE.Points(particleGeo, particleMat);
 scene.add(particles);
+
+// --- Picos rojos (puntiagudos, "angry") pegados a la superficie — giran con el globo
+const SPIKE_COUNT = 16;
+const spikeMat = new THREE.MeshStandardMaterial({
+  color: 0xeb5757,
+  emissive: 0x7a1f1f,
+  emissiveIntensity: 0.55,
+  roughness: 0.35,
+  metalness: 0.1,
+});
+for (let i = 0; i < SPIKE_COUNT; i++) {
+  const phi = Math.acos(1 - 2 * Math.random());
+  const theta = Math.random() * Math.PI * 2;
+  const dir = new THREE.Vector3(
+    Math.sin(phi) * Math.cos(theta),
+    Math.sin(phi) * Math.sin(theta),
+    Math.cos(phi)
+  ).normalize();
+  const h = CORE_RADIUS * (0.16 + Math.random() * 0.1);
+  const spikeGeo = new THREE.ConeGeometry(CORE_RADIUS * 0.055, h, 3);
+  const spike = new THREE.Mesh(spikeGeo, spikeMat);
+  spike.position.copy(dir.clone().multiplyScalar(CORE_RADIUS + h * 0.35));
+  spike.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  globe.add(spike); // hijo del globo: gira junto con la textura
+}
+
+// --- Cara "angry" (ojos + cejas) fija de frente a cámara, no gira con el globo
+function makeFaceTexture() {
+  const w = 512,
+    h = 512;
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d");
+
+  function eye(cx, cy) {
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 46, 54, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx, cy + 8, 19, 0, Math.PI * 2);
+    ctx.fillStyle = "#121212";
+    ctx.fill();
+  }
+  eye(w * 0.33, h * 0.5);
+  eye(w * 0.67, h * 0.5);
+
+  // cejas angry: trapezoides rojos inclinados hacia el centro (bien marcadas)
+  ctx.fillStyle = "#eb5757";
+  ctx.strokeStyle = "#121212";
+  ctx.lineWidth = 4;
+  ctx.save();
+  ctx.translate(w * 0.33, h * 0.28);
+  ctx.rotate(-0.38);
+  ctx.beginPath();
+  ctx.rect(-62, -16, 124, 28);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  ctx.save();
+  ctx.translate(w * 0.67, h * 0.28);
+  ctx.rotate(0.38);
+  ctx.beginPath();
+  ctx.rect(-62, -16, 124, 28);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+const faceMat = new THREE.SpriteMaterial({
+  map: makeFaceTexture(),
+  transparent: true,
+  depthWrite: false,
+});
+const faceSprite = new THREE.Sprite(faceMat);
+const FACE_SCALE = CORE_RADIUS * 1.55;
+faceSprite.scale.set(FACE_SCALE, FACE_SCALE, 1);
+faceSprite.position.set(0, CORE_RADIUS * 0.05, CORE_RADIUS * 1.35);
+scene.add(faceSprite); // no es hijo del globo: queda siempre de frente, aunque el globo rote
 
 // --- Estadísticas en vivo (Registro General / Registro B) -----------------
 // Los datos ya los trajo app.js desde la API (evita duplicar la lectura al Google Sheet).
@@ -174,30 +260,30 @@ const stats = await loadStats();
 // --- Etiquetas orbitando: General / B / marca ----------------------------
 const ORBITS = [
   {
-    radius: 2.15,
+    radius: CORE_RADIUS * 1.433,
     speed: 0.5,
     tilt: 0.3,
     phase: 0,
-    w: 1.3,
-    h: 0.54,
+    w: CORE_RADIUS * 0.867,
+    h: CORE_RADIUS * 0.36,
     texture: makeLabelTexture({ eyebrow: "Registro General", value: String(stats.total), color: "#27AE60" }),
   },
   {
-    radius: 2.35,
+    radius: CORE_RADIUS * 1.567,
     speed: -0.38,
     tilt: -0.32,
     phase: 2.1,
-    w: 1.3,
-    h: 0.54,
+    w: CORE_RADIUS * 0.867,
+    h: CORE_RADIUS * 0.36,
     texture: makeLabelTexture({ eyebrow: "Registro B", value: stats.pct + "%", color: "#EB5757" }),
   },
   {
-    radius: 2.25,
+    radius: CORE_RADIUS * 1.5,
     speed: 0.3,
     tilt: 0.5,
     phase: 4.2,
-    w: 1.45,
-    h: 0.44,
+    w: CORE_RADIUS * 0.967,
+    h: CORE_RADIUS * 0.293,
     texture: makeLabelTexture({ eyebrow: "Sistema de Mapeo", value: null, color: "#44b1ff" }),
   },
 ];

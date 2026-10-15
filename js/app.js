@@ -45,8 +45,11 @@
       .replace(/[̀-ͯ]/g, "");
   }
 
+  // Cruce Registro General <-> Registro B: usa Código + Nombre + Apellido juntos
+  // (no alcanza con el nombre solo porque se repite entre personas distintas,
+  // y el código solo tampoco porque va a haber códigos distintos cargados).
   function personKey(p) {
-    return normalize(p.Nombre) + "|" + normalize(p.Apellido);
+    return normalize(p.Codigo) + "|" + normalize(p.Nombre) + "|" + normalize(p.Apellido);
   }
 
   function loadGeocodeCache() {

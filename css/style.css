@@ -42,6 +42,7 @@ button,select,input,textarea{font-family:inherit;}
   min-height:100vh;display:flex;align-items:center;justify-content:center;
   padding:2rem 1.2rem;background:var(--paper);
 }
+.login-screen[hidden]{display:none;}
 .login-card{
   width:100%;max-width:340px;background:var(--surface);border:1px solid var(--border);
   border-radius:18px;padding:2rem 1.6rem;box-shadow:var(--shadow);
