@@ -251,6 +251,12 @@ main:has(#tab-inicio.active){padding-top:2rem;}
 }
 .result-fields b{color:var(--ink);font-weight:600;display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;font-family:'JetBrains Mono',monospace;margin-bottom:.1rem;}
 
+.inst-fields{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.5rem 1.2rem;
+  font-size:.82rem;margin:.9rem 0;color:var(--muted);
+}
+.inst-fields b{color:var(--ink);font-weight:600;display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;font-family:'JetBrains Mono',monospace;margin-bottom:.1rem;}
+
 .result-links{display:flex;gap:.6rem;flex-wrap:wrap;}
 .result-links .btn{text-decoration:none;display:inline-block;}
 

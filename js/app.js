@@ -128,6 +128,10 @@
     return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q);
   }
 
+  function googleMapsUrlInstitucion(p) {
+    return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(fullAddressInstitucion(p));
+  }
+
   // Búsqueda externa: solo un link a Google (sin API, sin costo) — no hay forma
   // gratuita de contar coincidencias reales, así que no se intenta.
   function googleSearchUrl(p) {
@@ -336,10 +340,29 @@
   function renderInstDetail(people) {
     const detail = document.getElementById("inst-detail");
     detail.hidden = false;
+    const ref = people[0]; // dirección/ubicación de la institución: igual para todo el grupo
     detail.innerHTML =
       "<h3>" +
       STATE.selectedInstitucion +
       "</h3>" +
+      '<div class="inst-fields">' +
+      "<div><b>Dirección</b>" +
+      (ref["Direccion de Institucion"] || "—") +
+      "</div>" +
+      "<div><b>Ubicación</b>" +
+      ref.Departamento +
+      " · " +
+      ref.Distrito +
+      "</div>" +
+      "<div><b>Personas cargadas</b>" +
+      people.length +
+      "</div>" +
+      "</div>" +
+      '<div class="result-links">' +
+      '<a class="btn btn-maps" target="_blank" rel="noopener" href="' +
+      googleMapsUrlInstitucion(ref) +
+      '">Cómo llegar</a>' +
+      "</div>" +
       '<div class="point-list">' +
       people
         .map(
@@ -350,6 +373,8 @@
             p.Nombre +
             " " +
             p.Apellido +
+            " · Orden " +
+            p.Orden +
             "</span>"
         )
         .join("") +
@@ -539,16 +564,26 @@
   }
 
   function institucionPopupHtml(name, people) {
+    const ref = people[0];
     return (
       '<div class="map-popup">' +
       "<b>" +
       name +
       "</b><br>" +
-      people.length +
-      " persona(s) cargada(s)<br>" +
+      (ref["Direccion de Institucion"] || "—") +
+      "<br>" +
       "<small>" +
-      people[0].Departamento +
-      "</small>" +
+      ref.Departamento +
+      " · " +
+      ref.Distrito +
+      "</small><br>" +
+      people.length +
+      " persona(s) cargada(s)" +
+      '<div class="popup-actions">' +
+      '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
+      googleMapsUrlInstitucion(ref) +
+      '">Cómo llegar</a>' +
+      "</div>" +
       "</div>"
     );
   }
