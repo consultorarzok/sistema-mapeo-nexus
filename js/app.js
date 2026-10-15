@@ -8,8 +8,10 @@
     selectedDistrito: "",
     selectedInstitucion: "",
     map: null,
-    markerLayer: null,
-    mapMode: "instituciones", // "instituciones" (azul, siempre visible) | "personas" (verde/rojo, dentro de una institución)
+    institutionLayer: null,
+    reachLayer: null,
+    personLayer: null,
+    mapMode: "instituciones", // "instituciones" (azul, siempre visible) | "personas" (verde/rojo + círculo de alcance, se suma a las instituciones)
     mapaTabVisitada: false,
   };
 
@@ -364,8 +366,21 @@
       maxZoom: 18,
       attribution: "&copy; OpenStreetMap",
     }).addTo(STATE.map);
-    STATE.markerLayer = L.layerGroup().addTo(STATE.map);
+    // capas separadas: las instituciones (azul) nunca se borran al mostrar personas
+    STATE.institutionLayer = L.layerGroup().addTo(STATE.map);
+    STATE.reachLayer = L.layerGroup().addTo(STATE.map);
+    STATE.personLayer = L.layerGroup().addTo(STATE.map);
     return STATE.map;
+  }
+
+  function haversineMeters(lat1, lng1, lat2, lng2) {
+    const R = 6371000;
+    const toRad = (d) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
   }
 
   function coloredIcon(color) {
@@ -476,7 +491,9 @@
     hideSelectedPersonCard();
 
     const map = ensureMap();
-    STATE.markerLayer.clearLayers();
+    STATE.institutionLayer.clearLayers();
+    STATE.personLayer.clearLayers();
+    STATE.reachLayer.clearLayers();
     setTimeout(() => map.invalidateSize(), 50);
 
     const people = scopedPeople();
@@ -495,7 +512,7 @@
       bounds.push([coords.lat, coords.lng]);
       const marker = L.marker([coords.lat, coords.lng], { icon: coloredIcon("#2D6CDF") })
         .bindPopup(institucionPopupHtml(name, group))
-        .addTo(STATE.markerLayer);
+        .addTo(STATE.institutionLayer);
       marker.on("click", () => selectInstitucion(name, group));
     }
     if (bounds.length) {
@@ -503,7 +520,9 @@
     }
   }
 
-  // Modo "personas" (verde=Planilla General / rojo=Planilla B) — dentro de una institución
+  // Modo "personas" (verde=Planilla General / rojo=Planilla B) — el punto azul de
+  // la institución queda visible y se agrega un círculo de "radio de alcance"
+  // hasta las personas que se muestran alrededor.
   async function showPersonMarkers(people, kind) {
     STATE.mapMode = "personas";
     document.getElementById("btn-volver-instituciones").hidden = false;
@@ -512,23 +531,56 @@
     hideSelectedPersonCard();
 
     const map = ensureMap();
-    STATE.markerLayer.clearLayers();
+    STATE.personLayer.clearLayers();
+    STATE.reachLayer.clearLayers();
     setTimeout(() => map.invalidateSize(), 50);
 
     const color = kind === "b" ? "#EB5757" : "#27AE60";
+    const institCoords = people[0] ? await geocode(fullAddressInstitucion(people[0])) : null;
+
     const bounds = [];
+    if (institCoords) bounds.push([institCoords.lat, institCoords.lng]);
+    let maxDist = 0;
     for (const p of people) {
       const coords = await geocode(fullAddress(p));
       if (!coords) continue;
       bounds.push([coords.lat, coords.lng]);
+      if (institCoords) {
+        maxDist = Math.max(maxDist, haversineMeters(institCoords.lat, institCoords.lng, coords.lat, coords.lng));
+      }
       const marker = L.marker([coords.lat, coords.lng], { icon: coloredIcon(color) })
         .bindPopup(popupHtml(p))
-        .addTo(STATE.markerLayer);
+        .addTo(STATE.personLayer);
       marker.on("click", () => showSelectedPersonCard(p));
     }
+
+    if (institCoords) {
+      const radius = Math.min(6000, Math.max(300, maxDist * 1.25));
+      L.circle([institCoords.lat, institCoords.lng], {
+        radius,
+        color: "#2D6CDF",
+        weight: 1.5,
+        dashArray: "5 5",
+        fillColor: "#2D6CDF",
+        fillOpacity: 0.07,
+      }).addTo(STATE.reachLayer);
+    }
+
     if (bounds.length) {
       map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
     }
+  }
+
+  // Saca los puntos verdes/rojos y el círculo de alcance, sin re-dibujar las
+  // instituciones (que ya estaban visibles y no cambiaron).
+  function exitPersonMode() {
+    STATE.mapMode = "instituciones";
+    STATE.personLayer.clearLayers();
+    STATE.reachLayer.clearLayers();
+    document.getElementById("btn-volver-instituciones").hidden = true;
+    document.getElementById("map-note").textContent =
+      "Geolocalización con OpenStreetMap · tocá una institución para ver sus datos";
+    hideSelectedPersonCard();
   }
 
   // ---------------------------------------------------------------
@@ -654,9 +706,7 @@
     renderInstGrid();
     populateCodigoDatalist();
     document.getElementById("btn-volver-instituciones").addEventListener("click", () => {
-      document.querySelectorAll(".inst-card").forEach((c) => c.classList.remove("active"));
-      clearDetail();
-      renderInstitutionMarkers();
+      exitPersonMode();
     });
   }
 
