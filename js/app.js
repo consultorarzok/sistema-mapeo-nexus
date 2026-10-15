@@ -65,6 +65,11 @@
     } catch (e) {}
   }
 
+  // Orden se repite entre instituciones: la clave de una persona es Institución + Orden
+  function personaId(p) {
+    return String(p.Institucion || "") + "||" + String(p.Orden);
+  }
+
   function getObservacion(p) {
     return p.Observacion || "";
   }
@@ -74,7 +79,7 @@
     const res = await fetch(API_BASE + "/nexus-observacion", {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify({ token, orden: p.Orden, observacion: texto }),
+      body: JSON.stringify({ token, institucion: p.Institucion, orden: p.Orden, observacion: texto }),
     });
     if (res.status === 401) {
       window.NexusAuth.forceLogin();
@@ -429,7 +434,7 @@
       const btn = document.querySelector(".popup-btn-buscar");
       if (!btn) return;
       btn.addEventListener("click", () => {
-        const p = STATE.general.find((x) => String(x.Orden) === btn.dataset.orden);
+        const p = STATE.general.find((x) => personaId(x) === decodeURIComponent(btn.dataset.key));
         if (p) jumpToBuscador(p);
       });
     });
@@ -493,8 +498,8 @@
       p.Institucion +
       "</i>" +
       '<div class="popup-actions">' +
-      '<button class="btn btn-secondary popup-btn-buscar" data-orden="' +
-      p.Orden +
+      '<button class="btn btn-secondary popup-btn-buscar" data-key="' +
+      encodeURIComponent(personaId(p)) +
       '">🔍 Buscar</button>' +
       '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
       googleSearchUrl(p) +
