@@ -150,7 +150,7 @@
     if (tabBtn) tabBtn.click();
     const input = document.getElementById("input-codigo");
     if (!input) return;
-    input.value = p.Nombre + " " + p.Apellido;
+    input.value = p.Apellido + " " + p.Nombre;
     renderCodigoResults(input.value.trim());
     input.scrollIntoView({ behavior: "smooth", block: "center" });
   }
@@ -510,9 +510,9 @@
             '<span class="point-chip"><span class="codigo-mono">' +
             p.Codigo +
             "</span> · " +
-            p.Nombre +
-            " " +
             p.Apellido +
+            " " +
+            p.Nombre +
             " · Orden " +
             p.Orden +
             "</span>"
@@ -616,9 +616,9 @@
       "<b>" +
       p.Codigo +
       " — " +
-      p.Nombre +
-      " " +
       p.Apellido +
+      " " +
+      p.Nombre +
       "</b><br>" +
       "<small>" +
       p.Departamento +
@@ -652,9 +652,9 @@
     box.hidden = false;
     box.innerHTML =
       '<div class="sp-head"><span class="sp-name">' +
-      p.Nombre +
-      " " +
       p.Apellido +
+      " " +
+      p.Nombre +
       '</span><span class="sp-codigo">' +
       p.Codigo +
       (p._enB ? " · en Registro B" : "") +
@@ -920,9 +920,9 @@
         '<div class="result-head">' +
         "<div>" +
         '<div class="result-name">' +
-        p.Nombre +
-        " " +
         p.Apellido +
+        " " +
+        p.Nombre +
         "</div>" +
         '<div class="result-sub">' +
         p.Codigo +
