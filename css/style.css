@@ -228,6 +228,15 @@ main:has(#tab-inicio.active){padding-top:2rem;}
 }
 .result-fields b{color:var(--ink);font-weight:600;display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;font-family:'JetBrains Mono',monospace;margin-bottom:.1rem;}
 
+.result-links{display:flex;gap:.6rem;flex-wrap:wrap;}
+.result-links .btn{text-decoration:none;display:inline-block;}
+
+.map-popup .popup-actions{display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap;}
+.map-popup .popup-actions .btn{
+  font-size:.72rem;padding:.35rem .6rem;border-radius:8px;text-decoration:none;
+  background:#EEF2FA;color:#1e1e1e;border:1px solid #DCE2F2;
+}
+
 .obs-row{display:flex;gap:.6rem;align-items:flex-start;margin-top:.8rem;flex-wrap:wrap;}
 .obs-row textarea{
   flex:1;min-width:220px;min-height:2.6rem;resize:vertical;padding:.55rem .7rem;

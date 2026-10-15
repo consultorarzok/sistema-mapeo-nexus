@@ -124,6 +124,24 @@
     return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q);
   }
 
+  // Búsqueda externa: solo un link a Google (sin API, sin costo) — no hay forma
+  // gratuita de contar coincidencias reales, así que no se intenta.
+  function googleSearchUrl(p) {
+    const q = [p.Codigo, p.Nombre, p.Apellido].filter(Boolean).join(" ");
+    return "https://www.google.com/search?q=" + encodeURIComponent(q);
+  }
+
+  // Búsqueda interna: lleva a la pestaña Buscador con código+nombre+apellido cargado
+  function jumpToBuscador(p) {
+    const tabBtn = document.querySelector('.tab-btn[data-tab="buscador"]');
+    if (tabBtn) tabBtn.click();
+    const input = document.getElementById("input-codigo");
+    if (!input) return;
+    input.value = p.Nombre + " " + p.Apellido;
+    renderCodigoResults(input.value.trim());
+    input.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   // ---------------------------------------------------------------
   // Carga de datos
   // ---------------------------------------------------------------
@@ -370,6 +388,17 @@
     STATE.institutionLayer = L.layerGroup().addTo(STATE.map);
     STATE.reachLayer = L.layerGroup().addTo(STATE.map);
     STATE.personLayer = L.layerGroup().addTo(STATE.map);
+
+    // delegación: el botón "Buscar" de los popups se crea/destruye con cada popup
+    STATE.map.on("popupopen", (e) => {
+      const btn = e.popup._container.querySelector(".popup-btn-buscar");
+      if (!btn) return;
+      btn.addEventListener("click", () => {
+        const p = STATE.general.find((x) => String(x.Orden) === btn.dataset.orden);
+        if (p) jumpToBuscador(p);
+      });
+    });
+
     return STATE.map;
   }
 
@@ -417,6 +446,14 @@
       "<i>" +
       p.Institucion +
       "</i>" +
+      '<div class="popup-actions">' +
+      '<button class="btn btn-secondary popup-btn-buscar" data-orden="' +
+      p.Orden +
+      '">🔍 Buscar</button>' +
+      '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
+      googleSearchUrl(p) +
+      '">Google</a>' +
+      "</div>" +
       "</div>"
     );
   }
@@ -457,7 +494,14 @@
       "<div><b>Observación</b>" +
       (getObservacion(p) || "—") +
       "</div>" +
+      "</div>" +
+      '<div class="result-links">' +
+      '<button class="btn btn-secondary sp-btn-buscar">🔍 Buscar en el sistema</button>' +
+      '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
+      googleSearchUrl(p) +
+      '">Buscar en Google</a>' +
       "</div>";
+    box.querySelector(".sp-btn-buscar").addEventListener("click", () => jumpToBuscador(p));
     box.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
@@ -616,13 +660,23 @@
     return b.includes(a);
   }
 
+  // Búsqueda combinada: código, o nombre+apellido (en cualquier orden)
+  function matchesQuery(valorBuscado, p) {
+    if (matchesCodigo(valorBuscado, p.Codigo)) return true;
+    const a = normalize(valorBuscado);
+    const nombreCompleto = normalize(p.Nombre + " " + p.Apellido);
+    const apellidoNombre = normalize(p.Apellido + " " + p.Nombre);
+    if (!a) return false;
+    return nombreCompleto.includes(a) || apellidoNombre.includes(a);
+  }
+
   function renderCodigoResults(valor) {
     const wrap = document.getElementById("codigo-results");
     wrap.innerHTML = "";
     if (!valor) return;
-    const people = STATE.general.filter((p) => matchesCodigo(valor, p.Codigo));
+    const people = STATE.general.filter((p) => matchesQuery(valor, p));
     if (!people.length) {
-      wrap.innerHTML = '<div class="empty-hint">No hay personas cargadas con ese código.</div>';
+      wrap.innerHTML = '<div class="empty-hint">No hay personas que coincidan con ese código o nombre.</div>';
       return;
     }
     people.forEach((p) => {
@@ -670,9 +724,14 @@
         p["Direccion de Institucion"] +
         "</div>" +
         "</div>" +
+        '<div class="result-links">' +
         '<a class="btn btn-maps" target="_blank" rel="noopener" href="' +
         googleMapsUrl(p) +
         '">Ver en Google Maps</a>' +
+        '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
+        googleSearchUrl(p) +
+        '">Buscar en Google</a>' +
+        "</div>" +
         '<div class="obs-row">' +
         '<textarea placeholder="Observación…">' +
         (getObservacion(p) || "") +
