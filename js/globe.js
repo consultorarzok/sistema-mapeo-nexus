@@ -10,7 +10,7 @@ renderer.toneMappingExposure = 1.1;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-camera.position.set(0, 0.3, 5.4);
+camera.position.set(0, 0.2, 6.6);
 
 function sizeToStage() {
   const w = stage.clientWidth;
@@ -100,22 +100,110 @@ const particleMat = new THREE.PointsMaterial({
 const particles = new THREE.Points(particleGeo, particleMat);
 scene.add(particles);
 
-// --- "Logos" orbitando (sprites) -----------------------------------------
+// --- Estadísticas en vivo (Registro General / Registro B) -----------------
+async function loadStats() {
+  try {
+    const [gRes, bRes] = await Promise.all([fetch("js/data-general.json"), fetch("js/data-b.json")]);
+    const general = await gRes.json();
+    const b = await bRes.json();
+    const total = general.length;
+    const totalB = b.length;
+    const pct = total ? ((totalB / total) * 100).toFixed(1) : "0.0";
+    return { total, totalB, pct };
+  } catch (e) {
+    return { total: 0, totalB: 0, pct: "0.0" };
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function makeLabelTexture({ eyebrow, value, color }) {
+  const w = 560,
+    h = 230;
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d");
+
+  ctx.fillStyle = "rgba(10,14,26,0.74)";
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.lineWidth = 3;
+  roundRect(ctx, 6, 6, w - 12, h - 12, 38);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  if (value) {
+    ctx.fillStyle = color;
+    ctx.font = "700 36px 'JetBrains Mono', monospace";
+    ctx.fillText(eyebrow.toUpperCase(), w / 2, 62);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "800 84px 'Bricolage Grotesque', sans-serif";
+    ctx.fillText(value, w / 2, 152);
+  } else {
+    ctx.fillStyle = color;
+    ctx.font = "700 48px 'Bricolage Grotesque', sans-serif";
+    ctx.fillText(eyebrow, w / 2, h / 2 + 6);
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+if (document.fonts && document.fonts.ready) {
+  await document.fonts.ready;
+}
+const stats = await loadStats();
+
+// --- Etiquetas orbitando: General / B / marca ----------------------------
 const ORBITS = [
-  { radius: 2.2, speed: 0.6, tilt: 0.25, phase: 0, color: 0x44b1ff },
-  { radius: 2.55, speed: -0.42, tilt: -0.4, phase: 2.1, color: 0x8de28f },
-  { radius: 2.35, speed: 0.33, tilt: 0.85, phase: 4.2, color: 0xffb46e },
+  {
+    radius: 2.15,
+    speed: 0.5,
+    tilt: 0.3,
+    phase: 0,
+    w: 1.3,
+    h: 0.54,
+    texture: makeLabelTexture({ eyebrow: "Registro General", value: String(stats.total), color: "#27AE60" }),
+  },
+  {
+    radius: 2.35,
+    speed: -0.38,
+    tilt: -0.32,
+    phase: 2.1,
+    w: 1.3,
+    h: 0.54,
+    texture: makeLabelTexture({ eyebrow: "Registro B", value: stats.pct + "%", color: "#EB5757" }),
+  },
+  {
+    radius: 2.25,
+    speed: 0.3,
+    tilt: 0.5,
+    phase: 4.2,
+    w: 1.45,
+    h: 0.44,
+    texture: makeLabelTexture({ eyebrow: "Sistema de Mapeo", value: null, color: "#44b1ff" }),
+  },
 ];
 const orbiters = ORBITS.map((o) => {
   const mat = new THREE.SpriteMaterial({
-    map: glowTex,
-    color: o.color,
+    map: o.texture,
     transparent: true,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
   });
   const sprite = new THREE.Sprite(mat);
-  sprite.scale.set(0.42, 0.42, 1);
+  sprite.scale.set(o.w, o.h, 1);
   scene.add(sprite);
   return { sprite, ...o };
 });
@@ -154,7 +242,7 @@ function animate() {
       Math.sin(angle) * o.radius * Math.sin(o.tilt),
       Math.sin(angle) * o.radius * Math.cos(o.tilt)
     );
-    o.sprite.material.opacity = 0.75 + Math.sin(t * 2 + o.phase) * 0.2;
+    o.sprite.material.opacity = 0.92 + Math.sin(t * 1.4 + o.phase) * 0.08;
   });
 
   renderer.render(scene, camera);
