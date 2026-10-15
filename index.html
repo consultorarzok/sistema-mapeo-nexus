@@ -73,38 +73,44 @@
     <div class="eyebrow">Explorar</div>
     <h1>Departamentos, distritos e instituciones</h1>
 
-    <div class="filter-bar">
-      <div class="field">
-        <label for="sel-depto">Departamento</label>
-        <select id="sel-depto">
-          <option value="">— Elegir departamento —</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="sel-distrito">Distrito</label>
-        <select id="sel-distrito" disabled>
-          <option value="">— Elegir distrito —</option>
-        </select>
-      </div>
-    </div>
-
-    <div id="map-wrap" class="map-wrap">
-      <div class="map-head">
-        <div class="map-legend">
-          <span class="dot dot-inst"></span> Instituciones
-          <span class="dot dot-general" style="margin-left:1rem;"></span> Planilla General
-          <span class="dot dot-b" style="margin-left:1rem;"></span> Planilla B
+    <div class="mapa-layout">
+      <div class="mapa-panel">
+        <div class="filter-bar">
+          <div class="field">
+            <label for="sel-depto">Departamento</label>
+            <select id="sel-depto">
+              <option value="">— Elegir departamento —</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="sel-distrito">Distrito</label>
+            <select id="sel-distrito" disabled>
+              <option value="">— Elegir distrito —</option>
+            </select>
+          </div>
         </div>
-        <div class="map-note" id="map-note">Geolocalización con OpenStreetMap · tocá un punto para ver el detalle</div>
+
+        <div id="inst-grid" class="inst-grid"></div>
+
+        <div id="inst-detail" class="inst-detail" hidden></div>
       </div>
-      <div id="leaflet-map"></div>
-      <button class="btn btn-secondary" id="btn-volver-instituciones" hidden>← Ver todas las instituciones en el mapa</button>
-      <div id="selected-person-card" class="selected-person-card" hidden></div>
+
+      <div class="mapa-mapside">
+        <div id="map-wrap" class="map-wrap">
+          <div class="map-head">
+            <div class="map-legend">
+              <span class="dot dot-inst"></span> Instituciones
+              <span class="dot dot-general" style="margin-left:1rem;"></span> Planilla General
+              <span class="dot dot-b" style="margin-left:1rem;"></span> Planilla B
+            </div>
+            <div class="map-note" id="map-note">Geolocalización con OpenStreetMap · tocá un punto para ver el detalle</div>
+          </div>
+          <div id="leaflet-map"></div>
+          <button class="btn btn-secondary" id="btn-volver-instituciones" hidden>← Ver todas las instituciones en el mapa</button>
+          <div id="selected-person-card" class="selected-person-card" hidden></div>
+        </div>
+      </div>
     </div>
-
-    <div id="inst-grid" class="inst-grid"></div>
-
-    <div id="inst-detail" class="inst-detail" hidden></div>
   </section>
 
   <!-- ===================== BUSCADOR ===================== -->
