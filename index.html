@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sistema de Mapeo Nexus</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Libre+Franklin:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -23,12 +23,20 @@
     <button class="tab-btn" data-tab="buscador" role="tab">Buscador por código</button>
   </nav>
   <span class="demo-tag">DEMO — datos ficticios</span>
+  <button id="theme-toggle" class="theme-toggle" aria-label="Cambiar tema" title="Modo claro / oscuro">
+    <svg class="icon-sun" viewBox="0 0 24 24" width="17" height="17" fill="none"><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.7"/><path d="M12 2.5v2.4M12 19.1v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+    <svg class="icon-moon" viewBox="0 0 24 24" width="17" height="17" fill="none"><path d="M20 14.2A8.3 8.3 0 1 1 9.8 4a6.6 6.6 0 0 0 10.2 10.2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+  </button>
 </header>
 
 <main>
 
   <!-- ===================== INICIO ===================== -->
   <section id="tab-inicio" class="tab-panel active">
+    <div class="nexus-hero">
+      <canvas id="globe-canvas"></canvas>
+    </div>
+
     <div class="stat-grid">
       <div class="stat-card stat-card--general">
         <span class="stat-label">Registro General</span>
@@ -122,6 +130,8 @@
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/theme.js"></script>
+<script type="module" src="js/globe.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
