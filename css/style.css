@@ -160,6 +160,7 @@ main:has(#tab-inicio.active){padding-top:3rem;}
 .map-legend{font-size:.8rem;font-weight:600;display:flex;align-items:center;}
 .map-note{font-size:.72rem;color:var(--muted);font-family:'JetBrains Mono',monospace;}
 #leaflet-map{height:420px;border-radius:16px;border:1px solid var(--border);box-shadow:var(--shadow);}
+#btn-volver-instituciones{margin-top:1rem;}
 
 .selected-person-card{
   margin-top:1.2rem;background:var(--surface);border:1px solid var(--border);border-radius:16px;

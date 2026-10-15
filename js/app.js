@@ -9,6 +9,8 @@
     selectedInstitucion: "",
     map: null,
     markerLayer: null,
+    mapMode: "instituciones", // "instituciones" (azul, siempre visible) | "personas" (verde/rojo, dentro de una institución)
+    mapaTabVisitada: false,
   };
 
   const GEOCODE_CACHE_KEY = "nexus_geocode_cache_v2";
@@ -111,6 +113,10 @@
     return p.Direccion + " " + p.Numero + ", " + locality(p) + ", Jujuy, Argentina";
   }
 
+  function fullAddressInstitucion(p) {
+    return p["Direccion de Institucion"] + ", " + locality(p) + ", Jujuy, Argentina";
+  }
+
   function googleMapsUrl(p) {
     const q = p.Direccion + " " + p.Numero + ", " + locality(p) + ", Jujuy, Argentina";
     return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q);
@@ -142,6 +148,10 @@
         document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
         btn.classList.add("active");
         document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+        if (btn.dataset.tab === "mapa") {
+          STATE.mapaTabVisitada = true;
+          renderInstitutionMarkers();
+        }
       });
     });
   }
@@ -235,6 +245,7 @@
       populateDistritoSelect();
       renderInstGrid();
       clearDetail();
+      renderInstitutionMarkers();
     });
   }
 
@@ -259,6 +270,7 @@
       STATE.selectedDistrito = sel.value;
       renderInstGrid();
       clearDetail();
+      renderInstitutionMarkers();
     };
   }
 
@@ -301,6 +313,7 @@
     names.forEach((name) => {
       const card = document.createElement("div");
       card.className = "inst-card";
+      card.dataset.inst = name;
       card.innerHTML =
         '<span class="inst-icon">' +
         instIcon() +
@@ -310,12 +323,7 @@
         '</span><div class="inst-count">' +
         byInst[name].length +
         " persona(s)</div></span>";
-      card.addEventListener("click", () => {
-        document.querySelectorAll(".inst-card").forEach((c) => c.classList.remove("active"));
-        card.classList.add("active");
-        STATE.selectedInstitucion = name;
-        renderInstDetail(byInst[name]);
-      });
+      card.addEventListener("click", () => selectInstitucion(name, byInst[name]));
       grid.appendChild(card);
     });
   }
@@ -323,7 +331,6 @@
   function clearDetail() {
     document.getElementById("inst-detail").hidden = true;
     document.getElementById("inst-detail").innerHTML = "";
-    document.getElementById("map-wrap").hidden = true;
     hideSelectedPersonCard();
   }
 
@@ -358,14 +365,23 @@
       "</div>";
 
     document.getElementById("btn-planilla-general").addEventListener("click", () => {
-      showMapFor(people, "general");
+      showPersonMarkers(people, "general");
     });
     document.getElementById("btn-planilla-b").addEventListener("click", () => {
-      showMapFor(
+      showPersonMarkers(
         people.filter((p) => p._enB),
         "b"
       );
     });
+  }
+
+  function selectInstitucion(name, people) {
+    document.querySelectorAll(".inst-card").forEach((c) => {
+      c.classList.toggle("active", c.dataset.inst === name);
+    });
+    STATE.selectedInstitucion = name;
+    renderInstDetail(people);
+    document.getElementById("inst-detail").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   // ---------------------------------------------------------------
@@ -466,10 +482,65 @@
     box.innerHTML = "";
   }
 
-  async function showMapFor(people, kind) {
-    const wrap = document.getElementById("map-wrap");
-    wrap.hidden = false;
+  function institucionPopupHtml(name, people) {
+    return (
+      '<div class="map-popup">' +
+      "<b>" +
+      name +
+      "</b><br>" +
+      people.length +
+      " persona(s) cargada(s)<br>" +
+      "<small>" +
+      people[0].Departamento +
+      "</small>" +
+      "</div>"
+    );
+  }
+
+  // Modo "instituciones" (azul) — siempre visible, se recalcula con el filtro de depto/distrito
+  async function renderInstitutionMarkers() {
+    STATE.mapMode = "instituciones";
+    document.getElementById("btn-volver-instituciones").hidden = true;
+    document.getElementById("map-note").textContent =
+      "Geolocalización con OpenStreetMap · tocá una institución para ver sus datos";
     hideSelectedPersonCard();
+
+    const map = ensureMap();
+    STATE.markerLayer.clearLayers();
+    setTimeout(() => map.invalidateSize(), 50);
+
+    const people = scopedPeople();
+    const byInst = {};
+    people.forEach((p) => {
+      byInst[p.Institucion] = byInst[p.Institucion] || [];
+      byInst[p.Institucion].push(p);
+    });
+    const names = Object.keys(byInst);
+
+    const bounds = [];
+    for (const name of names) {
+      const group = byInst[name];
+      const coords = await geocode(fullAddressInstitucion(group[0]));
+      if (!coords) continue;
+      bounds.push([coords.lat, coords.lng]);
+      const marker = L.marker([coords.lat, coords.lng], { icon: coloredIcon("#2D6CDF") })
+        .bindPopup(institucionPopupHtml(name, group))
+        .addTo(STATE.markerLayer);
+      marker.on("click", () => selectInstitucion(name, group));
+    }
+    if (bounds.length) {
+      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+    }
+  }
+
+  // Modo "personas" (verde=Planilla General / rojo=Planilla B) — dentro de una institución
+  async function showPersonMarkers(people, kind) {
+    STATE.mapMode = "personas";
+    document.getElementById("btn-volver-instituciones").hidden = false;
+    document.getElementById("map-note").textContent =
+      "Geolocalización con OpenStreetMap · tocá un punto para ver a la persona";
+    hideSelectedPersonCard();
+
     const map = ensureMap();
     STATE.markerLayer.clearLayers();
     setTimeout(() => map.invalidateSize(), 50);
@@ -612,6 +683,11 @@
     populateDistritoSelect();
     renderInstGrid();
     populateCodigoDatalist();
+    document.getElementById("btn-volver-instituciones").addEventListener("click", () => {
+      document.querySelectorAll(".inst-card").forEach((c) => c.classList.remove("active"));
+      clearDetail();
+      renderInstitutionMarkers();
+    });
   }
 
   document.addEventListener("DOMContentLoaded", init);

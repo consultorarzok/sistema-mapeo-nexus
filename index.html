@@ -80,21 +80,23 @@
       </div>
     </div>
 
+    <div id="map-wrap" class="map-wrap">
+      <div class="map-head">
+        <div class="map-legend">
+          <span class="dot dot-inst"></span> Instituciones
+          <span class="dot dot-general" style="margin-left:1rem;"></span> Planilla General
+          <span class="dot dot-b" style="margin-left:1rem;"></span> Planilla B
+        </div>
+        <div class="map-note" id="map-note">Geolocalización con OpenStreetMap · tocá un punto para ver el detalle</div>
+      </div>
+      <div id="leaflet-map"></div>
+      <button class="btn btn-secondary" id="btn-volver-instituciones" hidden>← Ver todas las instituciones en el mapa</button>
+      <div id="selected-person-card" class="selected-person-card" hidden></div>
+    </div>
+
     <div id="inst-grid" class="inst-grid"></div>
 
     <div id="inst-detail" class="inst-detail" hidden></div>
-
-    <div id="map-wrap" class="map-wrap" hidden>
-      <div class="map-head">
-        <div class="map-legend">
-          <span class="dot dot-general"></span> Planilla General
-          <span class="dot dot-b" style="margin-left:1rem;"></span> Planilla B
-        </div>
-        <div class="map-note">Geolocalización con OpenStreetMap · tocá un punto para ver a la persona</div>
-      </div>
-      <div id="leaflet-map"></div>
-      <div id="selected-person-card" class="selected-person-card" hidden></div>
-    </div>
   </section>
 
   <!-- ===================== BUSCADOR ===================== -->
