@@ -170,33 +170,6 @@
     requestAnimationFrame(tick);
   }
 
-  function buildSparkline(el, seedSeries) {
-    const w = 100,
-      h = 34;
-    const n = seedSeries.length;
-    const max = Math.max(...seedSeries);
-    const min = Math.min(...seedSeries);
-    const range = max - min || 1;
-    const points = seedSeries
-      .map((v, i) => {
-        const x = (i / (n - 1)) * w;
-        const y = h - ((v - min) / range) * (h - 6) - 3;
-        return x.toFixed(1) + "," + y.toFixed(1);
-      })
-      .join(" ");
-    el.setAttribute("points", points);
-  }
-
-  function cumulativeSeries(count) {
-    // serie "acumulada hasta ahora" a partir del orden de carga, para dar sensación de evolución/movimiento
-    const series = [];
-    const steps = Math.min(12, Math.max(4, count));
-    for (let i = 1; i <= steps; i++) {
-      series.push(Math.round((count * i) / steps));
-    }
-    return series;
-  }
-
   function renderInicio() {
     const total = STATE.general.length;
     const totalB = STATE.registroB.length;
@@ -207,9 +180,6 @@
 
     animateCount(document.getElementById("stat-general"), total, 900);
     animateCount(document.getElementById("stat-b"), totalB, 900);
-
-    buildSparkline(document.getElementById("spark-general"), cumulativeSeries(total));
-    buildSparkline(document.getElementById("spark-b"), cumulativeSeries(totalB));
 
     const circumference = 2 * Math.PI * 50; // r=50
     const arcLen = (pct / 100) * circumference;
