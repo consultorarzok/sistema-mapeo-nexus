@@ -128,55 +128,59 @@ for (let i = 0; i < SPIKE_COUNT; i++) {
   globe.add(spike); // hijo del globo: gira junto con la textura
 }
 
-// --- Cara "angry" (ojos + cejas) fija de frente a cámara, no gira con el globo
-function makeFaceTexture() {
-  const w = 512,
-    h = 512;
-  const c = document.createElement("canvas");
-  c.width = w;
-  c.height = h;
-  const ctx = c.getContext("2d");
+// --- Ojos "angry": dos triángulos rojos sólidos, apuntando hacia el centro
+// (donde iría la nariz), con el color pulsando entre rojo claro y rojo fuerte.
+// Fijos de frente a cámara: no giran con el globo.
+const FACE_W = 512,
+  FACE_H = 512;
+const faceCanvas = document.createElement("canvas");
+faceCanvas.width = FACE_W;
+faceCanvas.height = FACE_H;
+const faceCtx = faceCanvas.getContext("2d");
 
-  function eye(cx, cy) {
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, 46, 54, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "#fff";
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(cx, cy + 8, 19, 0, Math.PI * 2);
-    ctx.fillStyle = "#121212";
-    ctx.fill();
-  }
-  eye(w * 0.33, h * 0.5);
-  eye(w * 0.67, h * 0.5);
-
-  // cejas angry: trapezoides rojos inclinados hacia el centro (bien marcadas)
-  ctx.fillStyle = "#eb5757";
-  ctx.strokeStyle = "#121212";
-  ctx.lineWidth = 4;
-  ctx.save();
-  ctx.translate(w * 0.33, h * 0.28);
-  ctx.rotate(-0.38);
-  ctx.beginPath();
-  ctx.rect(-62, -16, 124, 28);
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-  ctx.save();
-  ctx.translate(w * 0.67, h * 0.28);
-  ctx.rotate(0.38);
-  ctx.beginPath();
-  ctx.rect(-62, -16, 124, 28);
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+const EYE_LIGHT_RED = [255, 138, 138]; // rojo claro
+const EYE_STRONG_RED = [139, 0, 0]; // rojo fuerte
+function lerpRed(t) {
+  const r = Math.round(EYE_LIGHT_RED[0] + (EYE_STRONG_RED[0] - EYE_LIGHT_RED[0]) * t);
+  const g = Math.round(EYE_LIGHT_RED[1] + (EYE_STRONG_RED[1] - EYE_LIGHT_RED[1]) * t);
+  const b = Math.round(EYE_LIGHT_RED[2] + (EYE_STRONG_RED[2] - EYE_LIGHT_RED[2]) * t);
+  return `rgb(${r},${g},${b})`;
 }
+
+function triangle(ctx, p1, p2, p3) {
+  ctx.beginPath();
+  ctx.moveTo(p1[0], p1[1]);
+  ctx.lineTo(p2[0], p2[1]);
+  ctx.lineTo(p3[0], p3[1]);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawFace(color) {
+  faceCtx.clearRect(0, 0, FACE_W, FACE_H);
+  faceCtx.fillStyle = color;
+  const cy = FACE_H * 0.5;
+  // ojo izquierdo: punta mirando a la derecha (hacia el centro/"nariz")
+  triangle(
+    faceCtx,
+    [FACE_W * 0.14, cy - 58],
+    [FACE_W * 0.14, cy + 58],
+    [FACE_W * 0.42, cy]
+  );
+  // ojo derecho: punta mirando a la izquierda (hacia el centro/"nariz")
+  triangle(
+    faceCtx,
+    [FACE_W * 0.86, cy - 58],
+    [FACE_W * 0.86, cy + 58],
+    [FACE_W * 0.58, cy]
+  );
+}
+drawFace(lerpRed(0));
+
+const faceTexture = new THREE.CanvasTexture(faceCanvas);
+faceTexture.colorSpace = THREE.SRGBColorSpace;
 const faceMat = new THREE.SpriteMaterial({
-  map: makeFaceTexture(),
+  map: faceTexture,
   transparent: true,
   depthWrite: false,
 });
@@ -325,6 +329,10 @@ function animate() {
   globeTex.offset.x = t * 0.015;
   ring.rotation.z += 0.0015;
   particles.rotation.y = t * 0.03;
+
+  const pulse = (Math.sin(t * 2.2) + 1) / 2; // 0..1, va y viene "endemoniado"
+  drawFace(lerpRed(pulse));
+  faceTexture.needsUpdate = true;
 
   orbiters.forEach((o) => {
     const angle = t * o.speed + o.phase;
