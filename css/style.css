@@ -159,7 +159,8 @@ main:has(#tab-inicio.active){padding-top:2rem;}
 :root:not([data-theme="light"]) .point-chip,:root[data-theme="dark"] .point-chip{color:#F2994A;}
 .point-chip .codigo-mono{font-family:'JetBrains Mono',monospace;font-size:.7rem;}
 
-.planilla-btns{display:flex;gap:.7rem;margin:1.1rem 0 1.4rem;}
+.planilla-auto-note{color:var(--muted);font-size:.8rem;margin:.9rem 0 0;}
+.planilla-btns{display:flex;gap:.7rem;margin:.6rem 0 1.4rem;}
 .btn{
   border:none;border-radius:10px;padding:.65rem 1.1rem;font-weight:700;font-size:.82rem;
   cursor:pointer;transition:opacity .12s ease;

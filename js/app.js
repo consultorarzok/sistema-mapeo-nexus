@@ -345,18 +345,15 @@
         )
         .join("") +
       "</div>" +
-      '<div class="planilla-btns">' +
-      '<button class="btn btn-general" id="btn-planilla-general">Planilla General (' +
+      '<p class="planilla-auto-note">Mostrando Planilla General (' +
       people.length +
-      ")</button>" +
+      ") en el mapa — tocá Planilla B para ver esos en cambio.</p>" +
+      '<div class="planilla-btns">' +
       '<button class="btn btn-b" id="btn-planilla-b">Planilla B (' +
       people.filter((p) => p._enB).length +
       ")</button>" +
       "</div>";
 
-    document.getElementById("btn-planilla-general").addEventListener("click", () => {
-      showPersonMarkers(people, "general");
-    });
     document.getElementById("btn-planilla-b").addEventListener("click", () => {
       showPersonMarkers(
         people.filter((p) => p._enB),
@@ -372,6 +369,7 @@
     STATE.selectedInstitucion = name;
     renderInstDetail(people);
     document.getElementById("inst-detail").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    focusInstitutionOnMap(name, people);
   }
 
   // ---------------------------------------------------------------
@@ -453,6 +451,9 @@
       '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
       googleSearchUrl(p) +
       '">Google</a>' +
+      '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
+      googleMapsUrl(p) +
+      '">Cómo llegar</a>' +
       "</div>" +
       "</div>"
     );
@@ -500,6 +501,9 @@
       '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
       googleSearchUrl(p) +
       '">Buscar en Google</a>' +
+      '<a class="btn btn-maps" target="_blank" rel="noopener" href="' +
+      googleMapsUrl(p) +
+      '">Cómo llegar</a>' +
       "</div>";
     box.querySelector(".sp-btn-buscar").addEventListener("click", () => jumpToBuscador(p));
     box.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -526,6 +530,35 @@
     );
   }
 
+  // Dibuja los puntos azules de instituciones. Si se pasa onlyName, solo esa
+  // (las demás quedan ocultas) — usado al enfocar una institución elegida.
+  async function populateInstitutionLayer(onlyName) {
+    const map = ensureMap();
+    STATE.institutionLayer.clearLayers();
+
+    const people = scopedPeople();
+    const byInst = {};
+    people.forEach((p) => {
+      byInst[p.Institucion] = byInst[p.Institucion] || [];
+      byInst[p.Institucion].push(p);
+    });
+    const names = onlyName ? [onlyName] : Object.keys(byInst);
+
+    const bounds = [];
+    for (const name of names) {
+      const group = byInst[name];
+      if (!group) continue;
+      const coords = await geocode(fullAddressInstitucion(group[0]));
+      if (!coords) continue;
+      bounds.push([coords.lat, coords.lng]);
+      const marker = L.marker([coords.lat, coords.lng], { icon: coloredIcon("#2D6CDF") })
+        .bindPopup(institucionPopupHtml(name, group))
+        .addTo(STATE.institutionLayer);
+      marker.on("click", () => selectInstitucion(name, group));
+    }
+    return bounds;
+  }
+
   // Modo "instituciones" (azul) — siempre visible, se recalcula con el filtro de depto/distrito
   async function renderInstitutionMarkers() {
     STATE.mapMode = "instituciones";
@@ -535,33 +568,21 @@
     hideSelectedPersonCard();
 
     const map = ensureMap();
-    STATE.institutionLayer.clearLayers();
     STATE.personLayer.clearLayers();
     STATE.reachLayer.clearLayers();
     setTimeout(() => map.invalidateSize(), 50);
 
-    const people = scopedPeople();
-    const byInst = {};
-    people.forEach((p) => {
-      byInst[p.Institucion] = byInst[p.Institucion] || [];
-      byInst[p.Institucion].push(p);
-    });
-    const names = Object.keys(byInst);
-
-    const bounds = [];
-    for (const name of names) {
-      const group = byInst[name];
-      const coords = await geocode(fullAddressInstitucion(group[0]));
-      if (!coords) continue;
-      bounds.push([coords.lat, coords.lng]);
-      const marker = L.marker([coords.lat, coords.lng], { icon: coloredIcon("#2D6CDF") })
-        .bindPopup(institucionPopupHtml(name, group))
-        .addTo(STATE.institutionLayer);
-      marker.on("click", () => selectInstitucion(name, group));
-    }
+    const bounds = await populateInstitutionLayer();
     if (bounds.length) {
       map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
     }
+  }
+
+  // Al elegir una institución: las demás instituciones se ocultan (solo queda
+  // la elegida) y se muestra automáticamente su Planilla General en el mapa.
+  async function focusInstitutionOnMap(name, people) {
+    await populateInstitutionLayer(name);
+    showPersonMarkers(people, "general");
   }
 
   // Modo "personas" (verde=Planilla General / rojo=Planilla B) — el punto azul de
@@ -615,9 +636,9 @@
     }
   }
 
-  // Saca los puntos verdes/rojos y el círculo de alcance, sin re-dibujar las
-  // instituciones (que ya estaban visibles y no cambiaron).
-  function exitPersonMode() {
+  // Vuelve a mostrar todas las instituciones (se habían ocultado todas menos
+  // la elegida) y saca los puntos verdes/rojos + el círculo de alcance.
+  async function exitPersonMode() {
     STATE.mapMode = "instituciones";
     STATE.personLayer.clearLayers();
     STATE.reachLayer.clearLayers();
@@ -625,6 +646,11 @@
     document.getElementById("map-note").textContent =
       "Geolocalización con OpenStreetMap · tocá una institución para ver sus datos";
     hideSelectedPersonCard();
+    const map = ensureMap();
+    const bounds = await populateInstitutionLayer();
+    if (bounds.length) {
+      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+    }
   }
 
   // ---------------------------------------------------------------
