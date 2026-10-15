@@ -8,9 +8,10 @@
     selectedDistrito: "",
     selectedInstitucion: "",
     map: null,
-    institutionLayer: null,
-    reachLayer: null,
-    personLayer: null,
+    infoWindow: null,
+    institutionMarkers: [],
+    reachCircles: [],
+    personMarkers: [],
     mapMode: "instituciones", // "instituciones" (azul, siempre visible) | "personas" (verde/rojo + círculo de alcance, se suma a las instituciones)
     mapaTabVisitada: false,
   };
@@ -373,23 +374,26 @@
   }
 
   // ---------------------------------------------------------------
-  // Mapa Leaflet — los datos de cada persona se ven recién al tocar su punto
+  // Mapa (Google Maps JS API) — los datos de cada persona se ven recién al tocar su punto
   // ---------------------------------------------------------------
   function ensureMap() {
     if (STATE.map) return STATE.map;
-    STATE.map = L.map("leaflet-map").setView([-23.9, -65.45], 9); // Jujuy
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
-      attribution: "&copy; OpenStreetMap",
-    }).addTo(STATE.map);
-    // capas separadas: las instituciones (azul) nunca se borran al mostrar personas
-    STATE.institutionLayer = L.layerGroup().addTo(STATE.map);
-    STATE.reachLayer = L.layerGroup().addTo(STATE.map);
-    STATE.personLayer = L.layerGroup().addTo(STATE.map);
+    STATE.map = new google.maps.Map(document.getElementById("map-canvas"), {
+      center: { lat: -23.9, lng: -65.45 }, // Jujuy
+      zoom: 9,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: false,
+    });
+    // "capas" separadas: las instituciones (azul) nunca se borran al mostrar personas
+    STATE.institutionMarkers = [];
+    STATE.reachCircles = [];
+    STATE.personMarkers = [];
 
-    // delegación: el botón "Buscar" de los popups se crea/destruye con cada popup
-    STATE.map.on("popupopen", (e) => {
-      const btn = e.popup._container.querySelector(".popup-btn-buscar");
+    // un solo InfoWindow compartido para todos los popups (institución o persona)
+    STATE.infoWindow = new google.maps.InfoWindow();
+    STATE.infoWindow.addListener("domready", () => {
+      const btn = document.querySelector(".popup-btn-buscar");
       if (!btn) return;
       btn.addEventListener("click", () => {
         const p = STATE.general.find((x) => String(x.Orden) === btn.dataset.orden);
@@ -398,6 +402,18 @@
     });
 
     return STATE.map;
+  }
+
+  function clearMarkers(arr) {
+    arr.forEach((o) => o.setMap(null));
+    arr.length = 0;
+  }
+
+  function fitToBounds(map, points) {
+    if (!points.length) return;
+    const bounds = new google.maps.LatLngBounds();
+    points.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
+    map.fitBounds(bounds, 30);
   }
 
   function haversineMeters(lat1, lng1, lat2, lng2) {
@@ -411,15 +427,14 @@
   }
 
   function coloredIcon(color) {
-    return L.divIcon({
-      className: "",
-      html:
-        '<div style="width:18px;height:18px;border-radius:50%;background:' +
-        color +
-        ';border:2.5px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>',
-      iconSize: [18, 18],
-      iconAnchor: [9, 9],
-    });
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      fillColor: color,
+      fillOpacity: 1,
+      strokeColor: "#fff",
+      strokeWeight: 2,
+      scale: 8,
+    };
   }
 
   function popupHtml(p) {
@@ -534,7 +549,7 @@
   // (las demás quedan ocultas) — usado al enfocar una institución elegida.
   async function populateInstitutionLayer(onlyName) {
     const map = ensureMap();
-    STATE.institutionLayer.clearLayers();
+    clearMarkers(STATE.institutionMarkers);
 
     const people = scopedPeople();
     const byInst = {};
@@ -551,10 +566,17 @@
       const coords = await geocode(fullAddressInstitucion(group[0]));
       if (!coords) continue;
       bounds.push([coords.lat, coords.lng]);
-      const marker = L.marker([coords.lat, coords.lng], { icon: coloredIcon("#2D6CDF") })
-        .bindPopup(institucionPopupHtml(name, group))
-        .addTo(STATE.institutionLayer);
-      marker.on("click", () => selectInstitucion(name, group));
+      const marker = new google.maps.Marker({
+        position: { lat: coords.lat, lng: coords.lng },
+        map,
+        icon: coloredIcon("#2D6CDF"),
+      });
+      marker.addListener("click", () => {
+        STATE.infoWindow.setContent(institucionPopupHtml(name, group));
+        STATE.infoWindow.open({ anchor: marker, map });
+        selectInstitucion(name, group);
+      });
+      STATE.institutionMarkers.push(marker);
     }
     return bounds;
   }
@@ -564,18 +586,16 @@
     STATE.mapMode = "instituciones";
     document.getElementById("btn-volver-instituciones").hidden = true;
     document.getElementById("map-note").textContent =
-      "Geolocalización con OpenStreetMap · tocá una institución para ver sus datos";
+      "Tocá una institución para ver sus datos";
     hideSelectedPersonCard();
 
     const map = ensureMap();
-    STATE.personLayer.clearLayers();
-    STATE.reachLayer.clearLayers();
-    setTimeout(() => map.invalidateSize(), 50);
+    clearMarkers(STATE.personMarkers);
+    clearMarkers(STATE.reachCircles);
+    setTimeout(() => google.maps.event.trigger(map, "resize"), 50);
 
     const bounds = await populateInstitutionLayer();
-    if (bounds.length) {
-      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
-    }
+    fitToBounds(map, bounds);
   }
 
   // Al elegir una institución: las demás instituciones se ocultan (solo queda
@@ -591,14 +611,13 @@
   async function showPersonMarkers(people, kind) {
     STATE.mapMode = "personas";
     document.getElementById("btn-volver-instituciones").hidden = false;
-    document.getElementById("map-note").textContent =
-      "Geolocalización con OpenStreetMap · tocá un punto para ver a la persona";
+    document.getElementById("map-note").textContent = "Tocá un punto para ver a la persona";
     hideSelectedPersonCard();
 
     const map = ensureMap();
-    STATE.personLayer.clearLayers();
-    STATE.reachLayer.clearLayers();
-    setTimeout(() => map.invalidateSize(), 50);
+    clearMarkers(STATE.personMarkers);
+    clearMarkers(STATE.reachCircles);
+    setTimeout(() => google.maps.event.trigger(map, "resize"), 50);
 
     const color = kind === "b" ? "#EB5757" : "#27AE60";
     const institCoords = people[0] ? await geocode(fullAddressInstitucion(people[0])) : null;
@@ -613,44 +632,49 @@
       if (institCoords) {
         maxDist = Math.max(maxDist, haversineMeters(institCoords.lat, institCoords.lng, coords.lat, coords.lng));
       }
-      const marker = L.marker([coords.lat, coords.lng], { icon: coloredIcon(color) })
-        .bindPopup(popupHtml(p))
-        .addTo(STATE.personLayer);
-      marker.on("click", () => showSelectedPersonCard(p));
+      const marker = new google.maps.Marker({
+        position: { lat: coords.lat, lng: coords.lng },
+        map,
+        icon: coloredIcon(color),
+      });
+      marker.addListener("click", () => {
+        STATE.infoWindow.setContent(popupHtml(p));
+        STATE.infoWindow.open({ anchor: marker, map });
+        showSelectedPersonCard(p);
+      });
+      STATE.personMarkers.push(marker);
     }
 
     if (institCoords) {
       const radius = Math.min(6000, Math.max(300, maxDist * 1.25));
-      L.circle([institCoords.lat, institCoords.lng], {
+      const circle = new google.maps.Circle({
+        center: { lat: institCoords.lat, lng: institCoords.lng },
         radius,
-        color: "#2D6CDF",
-        weight: 1.5,
-        dashArray: "5 5",
+        strokeColor: "#2D6CDF",
+        strokeWeight: 1.5,
+        strokeOpacity: 0.7,
         fillColor: "#2D6CDF",
         fillOpacity: 0.07,
-      }).addTo(STATE.reachLayer);
+        map,
+      });
+      STATE.reachCircles.push(circle);
     }
 
-    if (bounds.length) {
-      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
-    }
+    fitToBounds(map, bounds);
   }
 
   // Vuelve a mostrar todas las instituciones (se habían ocultado todas menos
   // la elegida) y saca los puntos verdes/rojos + el círculo de alcance.
   async function exitPersonMode() {
     STATE.mapMode = "instituciones";
-    STATE.personLayer.clearLayers();
-    STATE.reachLayer.clearLayers();
+    clearMarkers(STATE.personMarkers);
+    clearMarkers(STATE.reachCircles);
     document.getElementById("btn-volver-instituciones").hidden = true;
-    document.getElementById("map-note").textContent =
-      "Geolocalización con OpenStreetMap · tocá una institución para ver sus datos";
+    document.getElementById("map-note").textContent = "Tocá una institución para ver sus datos";
     hideSelectedPersonCard();
     const map = ensureMap();
     const bounds = await populateInstitutionLayer();
-    if (bounds.length) {
-      map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
-    }
+    fitToBounds(map, bounds);
   }
 
   // ---------------------------------------------------------------

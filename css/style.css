@@ -188,7 +188,7 @@ main:has(#tab-inicio.active){padding-top:2rem;}
 .map-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin-bottom:.7rem;}
 .map-legend{font-size:.8rem;font-weight:600;display:flex;align-items:center;}
 .map-note{font-size:.72rem;color:var(--muted);font-family:'JetBrains Mono',monospace;}
-#leaflet-map{height:540px;border-radius:16px;border:1px solid var(--border);box-shadow:var(--shadow);}
+#map-canvas{height:540px;border-radius:16px;border:1px solid var(--border);box-shadow:var(--shadow);}
 #btn-volver-instituciones{margin-top:1rem;}
 
 .selected-person-card{
@@ -256,7 +256,7 @@ main:has(#tab-inicio.active){padding-top:2rem;}
 @media (max-width:960px){
   .mapa-layout{grid-template-columns:1fr;}
   .mapa-mapside{position:static;}
-  #leaflet-map{height:400px;}
+  #map-canvas{height:400px;}
 }
 
 @media (max-width:640px){

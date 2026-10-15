@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sistema de Mapeo Nexus</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Libre+Franklin:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -97,9 +96,9 @@
               <span class="dot dot-general" style="margin-left:1rem;"></span> Planilla General
               <span class="dot dot-b" style="margin-left:1rem;"></span> Planilla B
             </div>
-            <div class="map-note" id="map-note">Geolocalización con OpenStreetMap · tocá un punto para ver el detalle</div>
+            <div class="map-note" id="map-note">Tocá una institución para ver sus datos</div>
           </div>
-          <div id="leaflet-map"></div>
+          <div id="map-canvas"></div>
           <button class="btn btn-secondary" id="btn-volver-instituciones" hidden>← Ver todas las instituciones en el mapa</button>
           <div id="selected-person-card" class="selected-person-card" hidden></div>
         </div>
@@ -129,7 +128,7 @@
   Sistema de Mapeo Nexus · uso interno · datos de carga manual
 </footer>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBY57W1544aRhbxLiesSlUnnheRuD_3spQ&v=weekly&loading=async"></script>
 <script src="js/theme.js"></script>
 <script type="module" src="js/globe.js"></script>
 <script src="js/app.js"></script>
