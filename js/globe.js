@@ -101,13 +101,18 @@ const particles = new THREE.Points(particleGeo, particleMat);
 scene.add(particles);
 
 // --- Estadísticas en vivo (Registro General / Registro B) -----------------
+// Los datos ya los trajo app.js desde la API (evita duplicar la lectura al Google Sheet).
+function waitForData() {
+  if (window.NexusData) return Promise.resolve(window.NexusData);
+  return new Promise((resolve) => {
+    window.addEventListener("nexus:data-ready", () => resolve(window.NexusData), { once: true });
+  });
+}
 async function loadStats() {
   try {
-    const [gRes, bRes] = await Promise.all([fetch("js/data-general.json"), fetch("js/data-b.json")]);
-    const general = await gRes.json();
-    const b = await bRes.json();
+    const { general, registroB } = await waitForData();
     const total = general.length;
-    const totalB = b.length;
+    const totalB = registroB.length;
     const pct = total ? ((totalB / total) * 100).toFixed(1) : "0.0";
     return { total, totalB, pct };
   } catch (e) {

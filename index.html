@@ -9,6 +9,28 @@
 </head>
 <body>
 
+<div id="login-screen" class="login-screen">
+  <form id="login-form" class="login-card">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none"><path d="M12 2 2 7v10l10 5 10-5V7L12 2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 12v10M12 12 2 7M12 12l10-5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    </span>
+    <h1>Sistema de Mapeo <b>Nexus</b></h1>
+    <p class="lede">Acceso interno — ingresá usuario y contraseña.</p>
+    <div class="field">
+      <label for="login-usuario">Usuario</label>
+      <input id="login-usuario" type="text" autocomplete="username" required>
+    </div>
+    <div class="field">
+      <label for="login-contrasena">Contraseña</label>
+      <input id="login-contrasena" type="password" autocomplete="current-password" required>
+    </div>
+    <p id="login-error" class="login-error" hidden></p>
+    <button id="login-submit" type="submit" class="btn btn-maps login-submit">Entrar</button>
+  </form>
+</div>
+
+<div id="app-shell" hidden>
+
 <header class="topbar">
   <div class="brand">
     <span class="brand-mark" aria-hidden="true">
@@ -21,7 +43,8 @@
     <button class="tab-btn" data-tab="mapa" role="tab">Mapa</button>
     <button class="tab-btn" data-tab="buscador" role="tab">Buscador por código</button>
   </nav>
-  <span class="demo-tag">DEMO — datos ficticios</span>
+  <span class="demo-tag">Datos en vivo</span>
+  <button id="logout-btn" class="btn btn-secondary logout-btn" title="Cerrar sesión">Salir</button>
   <button id="theme-toggle" class="theme-toggle" aria-label="Cambiar tema" title="Modo claro / oscuro">
     <svg class="icon-sun" viewBox="0 0 24 24" width="17" height="17" fill="none"><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.7"/><path d="M12 2.5v2.4M12 19.1v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
     <svg class="icon-moon" viewBox="0 0 24 24" width="17" height="17" fill="none"><path d="M20 14.2A8.3 8.3 0 1 1 9.8 4a6.6 6.6 0 0 0 10.2 10.2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
@@ -125,10 +148,13 @@
 </main>
 
 <footer class="footfoot">
-  Sistema de Mapeo Nexus · uso interno · datos de carga manual
+  Sistema de Mapeo Nexus · uso interno · datos en vivo (Google Sheets)
 </footer>
 
+</div>
+
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBY57W1544aRhbxLiesSlUnnheRuD_3spQ&v=weekly&loading=async"></script>
+<script src="js/auth.js"></script>
 <script src="js/theme.js"></script>
 <script type="module" src="js/globe.js"></script>
 <script src="js/app.js"></script>

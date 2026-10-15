@@ -17,7 +17,7 @@
   };
 
   const GEOCODE_CACHE_KEY = "nexus_geocode_cache_v2";
-  const OBS_OVERRIDES_KEY = "nexus_obs_overrides_v1"; // demo-only, guarda observaciones locales hasta que se conecte el Google Sheet real
+  const API_BASE = window.NEXUS_API_BASE;
 
   // Departamento (real, provincia de Jujuy) -> localidad real para georreferenciar.
   // El Departamento "Dr. Manuel Belgrano" no es en sí una ciudad: su cabecera es San Salvador de Jujuy.
@@ -62,24 +62,24 @@
     } catch (e) {}
   }
 
-  function loadObsOverrides() {
-    try {
-      return JSON.parse(localStorage.getItem(OBS_OVERRIDES_KEY) || "{}");
-    } catch (e) {
-      return {};
-    }
-  }
-  function saveObsOverride(orden, texto) {
-    const o = loadObsOverrides();
-    o[orden] = texto;
-    try {
-      localStorage.setItem(OBS_OVERRIDES_KEY, JSON.stringify(o));
-    } catch (e) {}
-  }
   function getObservacion(p) {
-    const overrides = loadObsOverrides();
-    if (Object.prototype.hasOwnProperty.call(overrides, p.Orden)) return overrides[p.Orden];
     return p.Observacion || "";
+  }
+
+  async function saveObservacion(p, texto) {
+    const token = window.NexusAuth.getToken();
+    const res = await fetch(API_BASE + "/nexus-observacion", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ token, orden: p.Orden, observacion: texto }),
+    });
+    if (res.status === 401) {
+      window.NexusAuth.forceLogin();
+      throw new Error("Sesión vencida");
+    }
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "No se pudo guardar");
+    p.Observacion = texto;
   }
 
   // ---------------------------------------------------------------
@@ -147,16 +147,21 @@
   // Carga de datos
   // ---------------------------------------------------------------
   async function loadData() {
-    const [gRes, bRes] = await Promise.all([
-      fetch("js/data-general.json"),
-      fetch("js/data-b.json"),
-    ]);
-    STATE.general = await gRes.json();
-    STATE.registroB = await bRes.json();
+    const token = window.NexusAuth.getToken();
+    const res = await fetch(API_BASE + "/nexus-data?token=" + encodeURIComponent(token));
+    if (res.status === 401) {
+      window.NexusAuth.forceLogin();
+      throw new Error("Sesión vencida");
+    }
+    const data = await res.json();
+    STATE.general = data.general;
+    STATE.registroB = data.registroB;
     const bKeys = new Set(STATE.registroB.map(personKey));
     STATE.general.forEach((p) => {
       p._enB = bKeys.has(personKey(p));
     });
+    window.NexusData = { general: STATE.general, registroB: STATE.registroB };
+    window.dispatchEvent(new CustomEvent("nexus:data-ready"));
   }
 
   // ---------------------------------------------------------------
@@ -788,15 +793,27 @@
         "</textarea>" +
         '<button class="btn btn-secondary btn-guardar-obs">Guardar</button>' +
         "</div>" +
-        '<div class="obs-saved-note">Guardado localmente (demo) — todavía no está conectado al Google Sheet real.</div>';
+        '<div class="obs-saved-note"></div>';
 
       const textarea = card.querySelector("textarea");
       const saveBtn = card.querySelector(".btn-guardar-obs");
       const note = card.querySelector(".obs-saved-note");
-      saveBtn.addEventListener("click", () => {
-        saveObsOverride(p.Orden, textarea.value);
-        note.classList.add("show");
-        setTimeout(() => note.classList.remove("show"), 2500);
+      saveBtn.addEventListener("click", async () => {
+        saveBtn.disabled = true;
+        saveBtn.textContent = "Guardando…";
+        try {
+          await saveObservacion(p, textarea.value);
+          note.textContent = "Guardado en el Google Sheet.";
+          note.classList.remove("is-error");
+          note.classList.add("show");
+        } catch (e) {
+          note.textContent = "Error al guardar: " + e.message;
+          note.classList.add("show", "is-error");
+        } finally {
+          saveBtn.disabled = false;
+          saveBtn.textContent = "Guardar";
+          setTimeout(() => note.classList.remove("show"), 2500);
+        }
       });
 
       wrap.appendChild(card);
@@ -817,7 +834,9 @@
     document.getElementById("btn-volver-instituciones").addEventListener("click", () => {
       exitPersonMode();
     });
+    const logoutBtn = document.getElementById("logout-btn");
+    if (logoutBtn) logoutBtn.addEventListener("click", () => window.NexusAuth.logout());
   }
 
-  document.addEventListener("DOMContentLoaded", init);
+  window.NexusAuth.ready.then(init);
 })();
