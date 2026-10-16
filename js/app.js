@@ -1005,7 +1005,7 @@
   // Usa Latitud/Longitud de la planilla si existen; si faltan, geocodifica con Nominatim
   // (1 consulta por segundo, cacheada en el navegador) y va sumando puntos.
   // ---------------------------------------------------------------
-  const OSM = { map: null, layerGeneral: null, layerB: null, token: 0 };
+  const OSM = { map: null, layerGeneral: null, layerB: null, layerInst: null, layerReach: null, token: 0 };
 
   function parseCoord(v) {
     if (v === undefined || v === null || v === "") return null;
@@ -1015,6 +1015,10 @@
 
   function cssVar(name, fallback) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  }
+
+  function instKey(p) {
+    return [p.Departamento, p.Institucion, p["Direccion de Institucion"]].join("|");
   }
 
   function osmSpread(items) {
@@ -1047,25 +1051,57 @@
     );
   }
 
-  function updateOsmCounts(shownG, totalG, shownB, totalB, pending) {
+  function osmInstPopupHtml(g, radius) {
+    const nB = g.people.filter((p) => p._enB).length;
+    return (
+      '<div class="osm-popup"><b>' + escapeHtml(g.name) + "</b>" +
+      '<div class="osm-sub">' + escapeHtml(g.dir || "") + "<br>" +
+      escapeHtml(g.depto + " · " + (g.distrito || "")) + "<br>" +
+      "<b style=\"display:inline\">" + g.people.length + "</b> personas · <b style=\"display:inline\">" + nB + "</b> en Planilla B<br>" +
+      "Rango de alcance: " + (radius >= 1000 ? (radius / 1000).toFixed(1) + " km" : Math.round(radius) + " m") + "</div>" +
+      '<button type="button" class="osm-btn-inst">Abrir en el Mapa (Google)</button></div>'
+    );
+  }
+
+  function updateOsmCounts(shownG, totalG, shownB, totalB, shownI, totalI, pending) {
     document.getElementById("osm-count-general").textContent = shownG;
     document.getElementById("osm-count-b").textContent = shownB;
-    const st = document.getElementById("osm-status");
+    document.getElementById("osm-count-inst").textContent = shownI;
     let msg = shownG + " de " + totalG + " personas en el mapa";
     if (pending > 0) msg += " · ubicando " + pending + " más…";
     if (totalB > shownB) msg += " · " + (totalB - shownB) + " de Planilla B sin dirección en General";
-    st.textContent = msg;
+    if (totalI > shownI && pending === 0) msg += " · " + (totalI - shownI) + " instituciones sin ubicar";
+    document.getElementById("osm-status").textContent = msg;
   }
 
   async function renderOsm() {
     if (!window.L || !OSM.map) return;
     const myToken = ++OSM.token;
-    OSM.layerGeneral.clearLayers();
-    OSM.layerB.clearLayers();
     const people = STATE.general;
     const totalB = STATE.registroB.length;
     const colorG = cssVar("--c-general", "#27AE60");
     const colorB = cssVar("--c-b", "#EB5757");
+    const colorI = cssVar("--c-inst", "#2F80ED");
+
+    // Instituciones: se agrupan por departamento + nombre + dirección
+    const instMap = new Map();
+    people.forEach((p) => {
+      const k = instKey(p);
+      if (!instMap.has(k)) {
+        instMap.set(k, {
+          name: p.Institucion, dir: p["Direccion de Institucion"], depto: p.Departamento, distrito: p.Distrito,
+          people: [], lat: null, lng: null, sample: p,
+        });
+      }
+      const g = instMap.get(k);
+      g.people.push(p);
+      if (g.lat === null) {
+        const la = parseCoord(p["Latitud Institucion"]), ln = parseCoord(p["Longitud Institucion"]);
+        if (la !== null && ln !== null) { g.lat = la; g.lng = ln; }
+      }
+    });
+    const insts = Array.from(instMap.values());
+
     const located = [];
     const pending = [];
     people.forEach((p) => {
@@ -1076,8 +1112,41 @@
 
     function draw(list) {
       osmSpread(list);
-      OSM.layerGeneral.clearLayers();
-      OSM.layerB.clearLayers();
+      [OSM.layerGeneral, OSM.layerB, OSM.layerInst, OSM.layerReach].forEach((l) => l.clearLayers());
+      const byInst = {};
+      list.forEach((it) => { (byInst[instKey(it.p)] = byInst[instKey(it.p)] || []).push(it); });
+
+      // Instituciones + rango de alcance (círculo punteado, mismo criterio que la pestaña Mapa)
+      let shownI = 0;
+      insts.forEach((g) => {
+        if (g.lat === null) return;
+        shownI++;
+        let maxDist = 0;
+        (byInst[instKey(g.sample)] || []).forEach((it) => {
+          maxDist = Math.max(maxDist, haversineMeters(g.lat, g.lng, it.lat, it.lng));
+        });
+        const radius = Math.min(6000, Math.max(300, maxDist * 1.25));
+        const circle = L.circle([g.lat, g.lng], {
+          radius, color: colorI, weight: 1.4, dashArray: "6 6", fillColor: colorI, fillOpacity: 0.05, interactive: false,
+        }).addTo(OSM.layerReach);
+        const icon = L.divIcon({
+          className: "osm-inst-icon",
+          html: '<div class="osm-inst-badge" style="background:' + colorI + '">' + g.people.length + "</div>",
+          iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16],
+        });
+        const m = L.marker([g.lat, g.lng], { icon, zIndexOffset: 1000, title: g.name }).addTo(OSM.layerInst);
+        m.bindPopup(osmInstPopupHtml(g, radius));
+        m.on("popupopen", (e) => {
+          circle.setStyle({ weight: 2.6, fillOpacity: 0.16 });
+          const btn = e.popup.getElement().querySelector(".osm-btn-inst");
+          if (btn) btn.addEventListener("click", () => {
+            document.querySelector('.tab-btn[data-tab="mapa"]').click();
+            goToInstitution({ depto: g.depto, name: g.name });
+          });
+        });
+        m.on("popupclose", () => circle.setStyle({ weight: 1.4, fillOpacity: 0.05 }));
+      });
+
       let shownB = 0;
       list.forEach((it) => {
         const mk = (color, layer, radius) => {
@@ -1093,41 +1162,60 @@
         mk(colorG, OSM.layerGeneral, 9);
         if (it.p._enB) { mk(colorB, OSM.layerB, 6); shownB++; }
       });
-      return shownB;
+      applyOsmToggles();
+      return { shownB, shownI };
     }
 
-    let shownB = draw(located);
-    updateOsmCounts(located.length, people.length, shownB, totalB, pending.length);
-    if (located.length) {
-      OSM.map.fitBounds(L.latLngBounds(located.map((it) => [it.lat, it.lng])), { padding: [30, 30], maxZoom: 15 });
+    function fit() {
+      const pts = located.map((it) => [it.lat, it.lng]).concat(insts.filter((g) => g.lat !== null).map((g) => [g.lat, g.lng]));
+      if (pts.length) OSM.map.fitBounds(L.latLngBounds(pts), { padding: [30, 30], maxZoom: 15 });
     }
 
-    // Personas sin coordenadas en la planilla: se ubican de a una (límite de Nominatim) y se suman en vivo
-    for (let i = 0; i < pending.length; i++) {
+    let r = draw(located);
+    updateOsmCounts(located.length, people.length, r.shownB, totalB, r.shownI, insts.length, pending.length);
+    fit();
+
+    // Lo que falte ubicar (sin coordenadas en la planilla) se geocodifica de a uno (límite de Nominatim) y se suma en vivo
+    const instPending = insts.filter((g) => g.lat === null);
+    const total = instPending.length + pending.length;
+    let left = total;
+    for (const g of instPending) {
       if (myToken !== OSM.token) return;
-      const p = pending[i];
+      const c = await geocode(fullAddressInstitucion(g.sample));
+      if (c) { g.lat = c.lat; g.lng = c.lng; }
+      left--;
+      r = draw(located);
+      updateOsmCounts(located.length, people.length, r.shownB, totalB, r.shownI, insts.length, left);
+      await new Promise((res) => setTimeout(res, 1100));
+    }
+    for (const p of pending) {
+      if (myToken !== OSM.token) return;
       let c = await geocode(fullAddress(p));
       if (!c) c = await geocode(p.Direccion + ", " + locality(p) + ", Jujuy, Argentina");
       if (c) located.push({ p, lat: c.lat, lng: c.lng });
-      shownB = draw(located);
-      updateOsmCounts(located.length, people.length, shownB, totalB, pending.length - i - 1);
-      await new Promise((r) => setTimeout(r, 1100));
+      left--;
+      r = draw(located);
+      updateOsmCounts(located.length, people.length, r.shownB, totalB, r.shownI, insts.length, left);
+      await new Promise((res) => setTimeout(res, 1100));
     }
-    if (myToken === OSM.token && pending.length && located.length) {
-      OSM.map.fitBounds(L.latLngBounds(located.map((it) => [it.lat, it.lng])), { padding: [30, 30], maxZoom: 15 });
-    }
-    applyOsmToggles();
+    if (myToken === OSM.token && total) fit();
   }
 
   function applyOsmToggles() {
     if (!OSM.map) return;
-    const g = document.getElementById("osm-chk-general").checked;
-    const b = document.getElementById("osm-chk-b").checked;
-    if (g && !OSM.map.hasLayer(OSM.layerGeneral)) OSM.map.addLayer(OSM.layerGeneral);
-    if (!g && OSM.map.hasLayer(OSM.layerGeneral)) OSM.map.removeLayer(OSM.layerGeneral);
-    if (b && !OSM.map.hasLayer(OSM.layerB)) OSM.map.addLayer(OSM.layerB);
-    if (!b && OSM.map.hasLayer(OSM.layerB)) OSM.map.removeLayer(OSM.layerB);
-    if (b && g) OSM.layerB.eachLayer((l) => l.bringToFront());
+    const want = {
+      general: document.getElementById("osm-chk-general").checked,
+      b: document.getElementById("osm-chk-b").checked,
+      inst: document.getElementById("osm-chk-inst").checked,
+      reach: document.getElementById("osm-chk-reach").checked,
+    };
+    [["general", OSM.layerGeneral], ["b", OSM.layerB], ["inst", OSM.layerInst], ["reach", OSM.layerReach]].forEach(([k, layer]) => {
+      const on = OSM.map.hasLayer(layer);
+      if (want[k] && !on) OSM.map.addLayer(layer);
+      if (!want[k] && on) OSM.map.removeLayer(layer);
+    });
+    if (want.reach) OSM.layerReach.eachLayer((l) => l.bringToBack());
+    if (want.b && want.general) OSM.layerB.eachLayer((l) => l.bringToFront());
   }
 
   function openOsmTab() {
@@ -1141,10 +1229,13 @@
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(OSM.map);
+      OSM.layerReach = L.layerGroup().addTo(OSM.map);
       OSM.layerGeneral = L.layerGroup().addTo(OSM.map);
       OSM.layerB = L.layerGroup().addTo(OSM.map);
-      document.getElementById("osm-chk-general").addEventListener("change", applyOsmToggles);
-      document.getElementById("osm-chk-b").addEventListener("change", applyOsmToggles);
+      OSM.layerInst = L.layerGroup().addTo(OSM.map);
+      ["general", "b", "inst", "reach"].forEach((k) =>
+        document.getElementById("osm-chk-" + k).addEventListener("change", applyOsmToggles)
+      );
       renderOsm();
     } else {
       OSM.map.invalidateSize();

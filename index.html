@@ -140,11 +140,13 @@
   <section id="tab-osm" class="tab-panel">
     <div class="eyebrow">Vista completa · sin costo</div>
     <h1>Mapa general de personas</h1>
-    <p class="lede">Todas las personas del padrón a la vez, sobre OpenStreetMap. Ubicación a nivel de calle (aproximada); para la dirección exacta usá la pestaña Mapa (Google).</p>
+    <p class="lede">Todas las personas del padrón a la vez, más las instituciones con su cantidad de personas y su rango de alcance, sobre OpenStreetMap. Ubicación a nivel de calle (aproximada); para la dirección exacta usá la pestaña Mapa (Google).</p>
 
     <div class="osm-bar">
       <label class="osm-toggle"><input type="checkbox" id="osm-chk-general" checked><span class="dot dot-general"></span> Planilla General <b id="osm-count-general">0</b></label>
       <label class="osm-toggle"><input type="checkbox" id="osm-chk-b" checked><span class="dot dot-b"></span> Planilla B <b id="osm-count-b">0</b></label>
+      <label class="osm-toggle"><input type="checkbox" id="osm-chk-inst" checked><span class="dot dot-inst"></span> Instituciones <b id="osm-count-inst">0</b></label>
+      <label class="osm-toggle"><input type="checkbox" id="osm-chk-reach" checked><span class="osm-ring"></span> Rango de alcance</label>
       <span class="map-note" id="osm-status"></span>
     </div>
     <div id="osm-canvas"></div>
