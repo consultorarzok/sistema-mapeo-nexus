@@ -79,7 +79,7 @@
     const res = await fetch(API_BASE + "/nexus-observacion", {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify({ token, institucion: p.Institucion, orden: p.Orden, observacion: texto }),
+      body: JSON.stringify({ token, row_number: p.row_number, institucion: p.Institucion, orden: p.Orden, observacion: texto }),
     });
     if (res.status === 401) {
       window.NexusAuth.forceLogin();
@@ -165,15 +165,101 @@
       window.NexusAuth.forceLogin();
       throw new Error("Sesión vencida");
     }
-    const data = await res.json();
-    STATE.general = data.general;
-    STATE.registroB = data.registroB;
+    const text = await res.text();
+    applyData(JSON.parse(text), text);
+    window.dispatchEvent(new CustomEvent("nexus:data-ready"));
+  }
+
+  function applyData(data, rawText) {
+    STATE.general = (data.general || []).filter(hasContent);
+    STATE.registroB = (data.registroB || []).filter(hasContent);
+    STATE.dataSig = rawText.length + ":" + hashStr(rawText);
     const bKeys = new Set(STATE.registroB.map(personKey));
     STATE.general.forEach((p) => {
       p._enB = bKeys.has(personKey(p));
     });
     window.NexusData = { general: STATE.general, registroB: STATE.registroB };
-    window.dispatchEvent(new CustomEvent("nexus:data-ready"));
+  }
+
+  // Descarta filas vacías o con solo espacios (una fila "en blanco" de la planilla no es una persona)
+  function hasContent(row) {
+    return Object.keys(row).some((k) => k !== "row_number" && String(row[k] == null ? "" : row[k]).trim() !== "");
+  }
+
+  function hashStr(str) {
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+    return h;
+  }
+
+  // ---------------------------------------------------------------
+  // Actualización automática: cada REFRESH_MS (y al volver a la pestaña del navegador)
+  // se vuelve a leer la planilla; si algo cambió se redibuja todo sin recargar la página.
+  // ---------------------------------------------------------------
+  const REFRESH_MS = 60000;
+  let refreshing = false;
+  let lastRefreshAt = Date.now();
+
+  function userIsTypingObservation() {
+    const a = document.activeElement;
+    return !!(a && a.tagName === "TEXTAREA");
+  }
+
+  async function refreshData() {
+    if (refreshing || document.hidden) return;
+    refreshing = true;
+    try {
+      const token = window.NexusAuth.getToken();
+      if (!token) return;
+      const res = await fetch(API_BASE + "/nexus-data?token=" + encodeURIComponent(token));
+      if (res.status === 401) {
+        window.NexusAuth.forceLogin();
+        return;
+      }
+      if (!res.ok) return;
+      const text = await res.text();
+      lastRefreshAt = Date.now();
+      const sig = text.length + ":" + hashStr(text);
+      setLiveStamp();
+      if (sig === STATE.dataSig) return;
+      applyData(JSON.parse(text), text);
+      rerenderAll();
+      window.dispatchEvent(new CustomEvent("nexus:data-updated"));
+    } catch (e) {
+      console.warn("refresh fallo", e);
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  function setLiveStamp() {
+    const el = document.getElementById("live-stamp");
+    if (!el) return;
+    const d = new Date();
+    el.textContent = "Sincronizado con las planillas · " + d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function rerenderAll() {
+    renderInicio();
+    populateDeptoSelect();
+    populateDistritoSelect();
+    renderInstGrid();
+    populateCodigoDatalist();
+    const input = document.getElementById("input-codigo");
+    if (input && input.value.trim() && !userIsTypingObservation()) renderCodigoResults(input.value.trim());
+    const mapaActive = document.getElementById("tab-mapa").classList.contains("active");
+    if (STATE.mapaTabVisitada && STATE.map && STATE.mapMode === "instituciones") {
+      if (mapaActive) populateInstitutionLayer();
+    }
+    if (OSM.map) renderOsm({ keepView: true });
+  }
+
+  function startAutoRefresh() {
+    setLiveStamp();
+    setInterval(refreshData, REFRESH_MS);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && Date.now() - lastRefreshAt > 20000) refreshData();
+    });
   }
 
   // ---------------------------------------------------------------
@@ -241,13 +327,17 @@
 
   function populateDeptoSelect() {
     const sel = document.getElementById("sel-depto");
-    const deptos = uniqueSorted(STATE.general.map((p) => p.Departamento));
+    const deptos = uniqueSorted(STATE.general.map((p) => p.Departamento).filter(Boolean));
+    while (sel.options.length > 1) sel.remove(1);
     deptos.forEach((d) => {
       const opt = document.createElement("option");
       opt.value = d;
       opt.textContent = d;
       sel.appendChild(opt);
     });
+    sel.value = deptos.includes(STATE.selectedDepto) ? STATE.selectedDepto : "";
+    if (sel.dataset.bound) return;
+    sel.dataset.bound = "1";
     sel.addEventListener("change", () => {
       STATE.selectedDepto = sel.value;
       STATE.selectedDistrito = "";
@@ -266,7 +356,7 @@
       return;
     }
     const distritos = uniqueSorted(
-      STATE.general.filter((p) => p.Departamento === STATE.selectedDepto).map((p) => p.Distrito)
+      STATE.general.filter((p) => p.Departamento === STATE.selectedDepto).map((p) => p.Distrito).filter(Boolean)
     );
     distritos.forEach((d) => {
       const opt = document.createElement("option");
@@ -275,6 +365,7 @@
       sel.appendChild(opt);
     });
     sel.disabled = false;
+    if (distritos.includes(STATE.selectedDistrito)) sel.value = STATE.selectedDistrito;
     sel.onchange = () => {
       STATE.selectedDistrito = sel.value;
       renderInstGrid();
@@ -868,7 +959,8 @@
   // ---------------------------------------------------------------
   function populateCodigoDatalist() {
     const list = document.getElementById("codigos-list");
-    const codigos = uniqueSorted(STATE.general.map((p) => p.Codigo)).sort((a, b) => {
+    list.innerHTML = "";
+    const codigos = uniqueSorted(STATE.general.map((p) => String(p.Codigo || "")).filter(Boolean)).sort((a, b) => {
       return parseInt(a.replace(/\D/g, ""), 10) - parseInt(b.replace(/\D/g, ""), 10);
     });
     codigos.forEach((c) => {
@@ -878,6 +970,8 @@
     });
 
     const input = document.getElementById("input-codigo");
+    if (input.dataset.bound) return;
+    input.dataset.bound = "1";
     input.addEventListener("input", () => {
       renderCodigoResults(input.value.trim());
     });
@@ -1074,7 +1168,7 @@
     document.getElementById("osm-status").textContent = msg;
   }
 
-  async function renderOsm() {
+  async function renderOsm(opts) {
     if (!window.L || !OSM.map) return;
     const myToken = ++OSM.token;
     const people = STATE.general;
@@ -1173,7 +1267,7 @@
 
     let r = draw(located);
     updateOsmCounts(located.length, people.length, r.shownB, totalB, r.shownI, insts.length, pending.length);
-    fit();
+    if (!(opts && opts.keepView)) fit();
 
     // Lo que falte ubicar (sin coordenadas en la planilla) se geocodifica de a uno (límite de Nominatim) y se suma en vivo
     const instPending = insts.filter((g) => g.lat === null);
@@ -1198,7 +1292,7 @@
       updateOsmCounts(located.length, people.length, r.shownB, totalB, r.shownI, insts.length, left);
       await new Promise((res) => setTimeout(res, 1100));
     }
-    if (myToken === OSM.token && total) fit();
+    if (myToken === OSM.token && total && !(opts && opts.keepView)) fit();
   }
 
   function applyOsmToggles() {
@@ -1259,6 +1353,7 @@
     });
     const logoutBtn = document.getElementById("logout-btn");
     if (logoutBtn) logoutBtn.addEventListener("click", () => window.NexusAuth.logout());
+    startAutoRefresh();
   }
 
   window.NexusAuth.ready.then(init);

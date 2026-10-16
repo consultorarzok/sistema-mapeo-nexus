@@ -303,6 +303,18 @@ const orbiters = ORBITS.map((o) => {
   return { sprite, ...o };
 });
 
+window.addEventListener("nexus:data-updated", async () => {
+  const st = await loadStats();
+  const upd = (i, opts) => {
+    const old = orbiters[i].sprite.material.map;
+    orbiters[i].sprite.material.map = makeLabelTexture(opts);
+    orbiters[i].sprite.material.needsUpdate = true;
+    if (old) old.dispose();
+  };
+  upd(0, { eyebrow: "Registro General", value: String(st.total), color: "#27AE60" });
+  upd(1, { eyebrow: "Registro B", value: st.pct + "%", color: "#EB5757" });
+});
+
 // --- Luces (3 direccionales, como pide la referencia) --------------------
 scene.add(new THREE.AmbientLight(0x335577, 0.6));
 const keyLight = new THREE.DirectionalLight(0x9fd8ff, 1.6);

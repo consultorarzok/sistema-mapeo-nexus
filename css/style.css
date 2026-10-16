@@ -322,3 +322,5 @@ main:has(#tab-inicio.active){padding-top:2rem;}
 .inst-suggest li mark{background:rgba(45,108,223,.25);color:inherit;border-radius:3px;padding:0 1px;}
 .inst-suggest .sg-sub{display:block;font-size:.74rem;color:var(--muted);margin-top:.1rem;}
 .inst-suggest .sg-empty{cursor:default;color:var(--muted);}
+
+.live-stamp{margin:14px 0 0;text-align:center;font-size:12px;color:var(--muted)}
