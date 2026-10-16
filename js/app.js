@@ -190,6 +190,7 @@
           STATE.mapaTabVisitada = true;
           renderInstitutionMarkers();
         }
+        if (btn.dataset.tab === "osm") openOsmTab();
       });
     });
   }
@@ -996,6 +997,158 @@
 
       wrap.appendChild(card);
     });
+  }
+
+
+  // ---------------------------------------------------------------
+  // Mapa general (OpenStreetMap / Leaflet, sin costo): todas las personas a la vez.
+  // Usa Latitud/Longitud de la planilla si existen; si faltan, geocodifica con Nominatim
+  // (1 consulta por segundo, cacheada en el navegador) y va sumando puntos.
+  // ---------------------------------------------------------------
+  const OSM = { map: null, layerGeneral: null, layerB: null, token: 0 };
+
+  function parseCoord(v) {
+    if (v === undefined || v === null || v === "") return null;
+    const n = parseFloat(String(v).replace(",", "."));
+    return isFinite(n) ? n : null;
+  }
+
+  function cssVar(name, fallback) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  }
+
+  function osmSpread(items) {
+    const groups = {};
+    items.forEach((it) => {
+      const k = it.lat.toFixed(5) + "," + it.lng.toFixed(5);
+      (groups[k] = groups[k] || []).push(it);
+    });
+    Object.values(groups).forEach((g) => {
+      g.forEach((it, i) => {
+        if (g.length === 1) { it.dLat = it.lat; it.dLng = it.lng; return; }
+        const r = 16 * Math.sqrt(i + 1);
+        const th = i * 2.4;
+        it.dLat = it.lat + (r * Math.cos(th)) / 111320;
+        it.dLng = it.lng + (r * Math.sin(th)) / (111320 * Math.cos((it.lat * Math.PI) / 180));
+      });
+    });
+  }
+
+  function osmPopupHtml(p) {
+    const tag = p._enB
+      ? '<span class="osm-tag" style="background:' + cssVar("--c-b", "#EB5757") + '">En Planilla B</span>'
+      : '<span class="osm-tag" style="background:' + cssVar("--c-general", "#27AE60") + '">Planilla General</span>';
+    return (
+      '<div class="osm-popup"><b>' + escapeHtml(p.Apellido + " " + p.Nombre) + "</b>" +
+      '<div class="osm-sub">' + escapeHtml(p.Codigo || "") + " · Orden " + escapeHtml(p.Orden) + "<br>" +
+      escapeHtml(p.Direccion + " " + p.Numero) + "<br>" +
+      escapeHtml(p.Institucion || "") + "</div>" + tag +
+      '<button type="button" class="osm-btn-buscar">🔍 Buscar en el sistema</button></div>'
+    );
+  }
+
+  function updateOsmCounts(shownG, totalG, shownB, totalB, pending) {
+    document.getElementById("osm-count-general").textContent = shownG;
+    document.getElementById("osm-count-b").textContent = shownB;
+    const st = document.getElementById("osm-status");
+    let msg = shownG + " de " + totalG + " personas en el mapa";
+    if (pending > 0) msg += " · ubicando " + pending + " más…";
+    if (totalB > shownB) msg += " · " + (totalB - shownB) + " de Planilla B sin dirección en General";
+    st.textContent = msg;
+  }
+
+  async function renderOsm() {
+    if (!window.L || !OSM.map) return;
+    const myToken = ++OSM.token;
+    OSM.layerGeneral.clearLayers();
+    OSM.layerB.clearLayers();
+    const people = STATE.general;
+    const totalB = STATE.registroB.length;
+    const colorG = cssVar("--c-general", "#27AE60");
+    const colorB = cssVar("--c-b", "#EB5757");
+    const located = [];
+    const pending = [];
+    people.forEach((p) => {
+      const lat = parseCoord(p.Latitud), lng = parseCoord(p.Longitud);
+      if (lat !== null && lng !== null) located.push({ p, lat, lng });
+      else pending.push(p);
+    });
+
+    function draw(list) {
+      osmSpread(list);
+      OSM.layerGeneral.clearLayers();
+      OSM.layerB.clearLayers();
+      let shownB = 0;
+      list.forEach((it) => {
+        const mk = (color, layer, radius) => {
+          const m = L.circleMarker([it.dLat, it.dLng], {
+            radius, color: "#fff", weight: 1.5, fillColor: color, fillOpacity: 0.95,
+          }).addTo(layer);
+          m.bindPopup(osmPopupHtml(it.p));
+          m.on("popupopen", (e) => {
+            const btn = e.popup.getElement().querySelector(".osm-btn-buscar");
+            if (btn) btn.addEventListener("click", () => jumpToBuscador(it.p));
+          });
+        };
+        mk(colorG, OSM.layerGeneral, 9);
+        if (it.p._enB) { mk(colorB, OSM.layerB, 6); shownB++; }
+      });
+      return shownB;
+    }
+
+    let shownB = draw(located);
+    updateOsmCounts(located.length, people.length, shownB, totalB, pending.length);
+    if (located.length) {
+      OSM.map.fitBounds(L.latLngBounds(located.map((it) => [it.lat, it.lng])), { padding: [30, 30], maxZoom: 15 });
+    }
+
+    // Personas sin coordenadas en la planilla: se ubican de a una (límite de Nominatim) y se suman en vivo
+    for (let i = 0; i < pending.length; i++) {
+      if (myToken !== OSM.token) return;
+      const p = pending[i];
+      let c = await geocode(fullAddress(p));
+      if (!c) c = await geocode(p.Direccion + ", " + locality(p) + ", Jujuy, Argentina");
+      if (c) located.push({ p, lat: c.lat, lng: c.lng });
+      shownB = draw(located);
+      updateOsmCounts(located.length, people.length, shownB, totalB, pending.length - i - 1);
+      await new Promise((r) => setTimeout(r, 1100));
+    }
+    if (myToken === OSM.token && pending.length && located.length) {
+      OSM.map.fitBounds(L.latLngBounds(located.map((it) => [it.lat, it.lng])), { padding: [30, 30], maxZoom: 15 });
+    }
+    applyOsmToggles();
+  }
+
+  function applyOsmToggles() {
+    if (!OSM.map) return;
+    const g = document.getElementById("osm-chk-general").checked;
+    const b = document.getElementById("osm-chk-b").checked;
+    if (g && !OSM.map.hasLayer(OSM.layerGeneral)) OSM.map.addLayer(OSM.layerGeneral);
+    if (!g && OSM.map.hasLayer(OSM.layerGeneral)) OSM.map.removeLayer(OSM.layerGeneral);
+    if (b && !OSM.map.hasLayer(OSM.layerB)) OSM.map.addLayer(OSM.layerB);
+    if (!b && OSM.map.hasLayer(OSM.layerB)) OSM.map.removeLayer(OSM.layerB);
+    if (b && g) OSM.layerB.eachLayer((l) => l.bringToFront());
+  }
+
+  function openOsmTab() {
+    if (!window.L) {
+      document.getElementById("osm-status").textContent = "No se pudo cargar el mapa (Leaflet).";
+      return;
+    }
+    if (!OSM.map) {
+      OSM.map = L.map("osm-canvas", { zoomControl: true }).setView([-23.4, -65.4], 8);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(OSM.map);
+      OSM.layerGeneral = L.layerGroup().addTo(OSM.map);
+      OSM.layerB = L.layerGroup().addTo(OSM.map);
+      document.getElementById("osm-chk-general").addEventListener("change", applyOsmToggles);
+      document.getElementById("osm-chk-b").addEventListener("change", applyOsmToggles);
+      renderOsm();
+    } else {
+      OSM.map.invalidateSize();
+    }
   }
 
   // ---------------------------------------------------------------

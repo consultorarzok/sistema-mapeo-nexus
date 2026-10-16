@@ -212,6 +212,14 @@ main:has(#tab-inicio.active){padding-top:2rem;}
 .map-note{font-size:.72rem;color:var(--muted);font-family:'JetBrains Mono',monospace;}
 #map-canvas{height:540px;border-radius:16px;border:1px solid var(--border);box-shadow:var(--shadow);}
 #btn-volver-instituciones{margin-top:1rem;}
+.osm-bar{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem 1.4rem;margin:1.2rem 0 .8rem;}
+.osm-toggle{display:inline-flex;align-items:center;gap:.45rem;font-size:.84rem;font-weight:600;cursor:pointer;}
+.osm-toggle b{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted);font-weight:500;}
+#osm-canvas{height:620px;border-radius:16px;border:1px solid var(--border);box-shadow:var(--shadow);z-index:0;}
+.osm-popup b{display:block;font-size:.95rem;margin-bottom:.15rem;}
+.osm-popup .osm-sub{color:#667;font-size:.78rem;line-height:1.45;}
+.osm-popup .osm-tag{display:inline-block;margin-top:.35rem;font-size:.66rem;font-weight:700;padding:.1em .55em;border-radius:999px;color:#fff;}
+.osm-popup button{margin-top:.5rem;display:block;font:inherit;font-size:.74rem;font-weight:600;border:1px solid #ccc;background:#fff;border-radius:8px;padding:.3em .7em;cursor:pointer;}
 
 .selected-person-card{
   margin-top:1.2rem;background:var(--surface);border:1px solid var(--border);border-radius:16px;
@@ -286,6 +294,7 @@ main:has(#tab-inicio.active){padding-top:2rem;}
   .mapa-layout{grid-template-columns:1fr;}
   .mapa-mapside{position:static;}
   #map-canvas{height:400px;}
+  #osm-canvas{height:460px;}
 }
 
 @media (max-width:640px){

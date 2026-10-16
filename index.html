@@ -41,6 +41,7 @@
   <nav class="tabs" role="tablist">
     <button class="tab-btn active" data-tab="inicio" role="tab">Inicio</button>
     <button class="tab-btn" data-tab="mapa" role="tab">Mapa</button>
+    <button class="tab-btn" data-tab="osm" role="tab">Mapa general</button>
     <button class="tab-btn" data-tab="buscador" role="tab">Buscador por código</button>
   </nav>
   <span class="demo-tag">Datos en vivo</span>
@@ -135,6 +136,20 @@
     </div>
   </section>
 
+  <!-- ===================== MAPA GENERAL (OpenStreetMap, gratis) ===================== -->
+  <section id="tab-osm" class="tab-panel">
+    <div class="eyebrow">Vista completa · sin costo</div>
+    <h1>Mapa general de personas</h1>
+    <p class="lede">Todas las personas del padrón a la vez, sobre OpenStreetMap. Ubicación a nivel de calle (aproximada); para la dirección exacta usá la pestaña Mapa (Google).</p>
+
+    <div class="osm-bar">
+      <label class="osm-toggle"><input type="checkbox" id="osm-chk-general" checked><span class="dot dot-general"></span> Planilla General <b id="osm-count-general">0</b></label>
+      <label class="osm-toggle"><input type="checkbox" id="osm-chk-b" checked><span class="dot dot-b"></span> Planilla B <b id="osm-count-b">0</b></label>
+      <span class="map-note" id="osm-status"></span>
+    </div>
+    <div id="osm-canvas"></div>
+  </section>
+
   <!-- ===================== BUSCADOR ===================== -->
   <section id="tab-buscador" class="tab-panel">
     <div class="eyebrow">Consulta</div>
@@ -159,6 +174,8 @@
 
 </div>
 
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBY57W1544aRhbxLiesSlUnnheRuD_3spQ&v=weekly&loading=async"></script>
 <script src="js/auth.js"></script>
 <script src="js/theme.js"></script>
