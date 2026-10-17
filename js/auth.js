@@ -1,10 +1,9 @@
 (function () {
   "use strict";
 
-  const API_BASE = "https://n8n.consultorarz.com/webhook";
-  const TOKEN_KEY = "nexus_auth_token_v1";
-
-  window.NEXUS_API_BASE = API_BASE;
+  const SB_URL = "https://henegdflczhrorprgbgf.supabase.co";
+  const SB_KEY = "sb_publishable_BVOqZJCP4_KthXjirtYEug_TqmbFJDX";
+  const TOKEN_KEY = "nexus_auth_token_v2";
 
   let resolveReady;
   const readyPromise = new Promise((resolve) => {
@@ -29,6 +28,21 @@
     } catch (e) {}
   }
 
+  async function rawRpc(fn, args) {
+    const res = await fetch(SB_URL + "/rest/v1/rpc/" + fn, {
+      method: "POST",
+      headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify(args),
+    });
+    if (res.status === 401) {
+      const e = new Error("Sesión vencida");
+      e.unauthorized = true;
+      throw e;
+    }
+    if (!res.ok) throw new Error("Error " + res.status);
+    return res.json();
+  }
+
   function reveal(token) {
     document.getElementById("login-screen").hidden = true;
     document.getElementById("app-shell").hidden = false;
@@ -47,12 +61,7 @@
     btn.disabled = true;
     btn.textContent = "Entrando…";
     try {
-      const res = await fetch(API_BASE + "/nexus-login", {
-        method: "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify({ usuario, contrasena }),
-      });
-      const data = await res.json();
+      const data = await rawRpc("nx_login", { p_usuario: usuario, p_contrasena: contrasena });
       if (data.ok) {
         storeToken(data.token, data.expires_at);
         reveal(data.token);
@@ -80,6 +89,15 @@
 
   window.NexusAuth = {
     ready: readyPromise,
+    // llama a una función de la base con el token de sesión; si venció, vuelve al login
+    async rpc(fn, args) {
+      try {
+        return await rawRpc(fn, Object.assign({ p_token: this.getToken() }, args || {}));
+      } catch (e) {
+        if (e.unauthorized) this.forceLogin();
+        throw e;
+      }
+    },
     getToken() {
       const stored = loadStored();
       return stored ? stored.token : null;

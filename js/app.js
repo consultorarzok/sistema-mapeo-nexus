@@ -2,11 +2,14 @@
   "use strict";
 
   const STATE = {
-    general: [],
-    registroB: [],
+    insts: [], // instituciones (id, nombre, depto, distrito, dir, personas, b, lat, lng, radio)
+    totals: { general: 0, b: 0, cruzan: 0, ubicadas: 0, ubicadas_b: 0 },
+    version: null,
+    peopleCache: new Map(), // inst_id -> personas ya cargadas
+    rowIndex: new Map(), // row_number -> persona
     selectedDepto: "",
     selectedDistrito: "",
-    selectedInstitucion: "",
+    selectedInstId: null,
     map: null,
     infoWindow: null,
     institutionMarkers: [],
@@ -16,21 +19,24 @@
     mapaTabVisitada: false,
   };
 
-  const GEOCODE_CACHE_KEY = "nexus_geocode_cache_v2";
-  const API_BASE = window.NEXUS_API_BASE;
-
-  // Departamento (real, provincia de Jujuy) -> localidad real para georreferenciar.
-  // El Departamento "Dr. Manuel Belgrano" no es en sí una ciudad: su cabecera es San Salvador de Jujuy.
+  // Departamento ("4 - EL CARMEN") -> localidad para armar la dirección que se abre en Google Maps.
   const DEPTO_LOCALITY = {
-    "Dr. Manuel Belgrano": "San Salvador de Jujuy",
-    "El Carmen": "El Carmen",
-    "Palpalá": "Palpalá",
-    "Ledesma": "Libertador General San Martín",
-    "Tilcara": "Tilcara",
-    "Humahuaca": "Humahuaca",
-    "San Antonio": "San Antonio",
-    "Tumbaya": "Tumbaya",
-    "Santa Bárbara": "Santa Bárbara",
+    "dr. manuel belgrano": "San Salvador de Jujuy",
+    "palpala": "Palpalá",
+    "san antonio": "San Antonio",
+    "el carmen": "El Carmen",
+    "san pedro": "San Pedro de Jujuy",
+    "santa barbara": "Palma Sola",
+    "ledesma": "Libertador General San Martín",
+    "valle grande": "Valle Grande",
+    "tumbaya": "Tumbaya",
+    "tilcara": "Tilcara",
+    "humahuaca": "Humahuaca",
+    "cochinoca": "Abra Pampa",
+    "rinconada": "Rinconada",
+    "santa catalina": "Santa Catalina",
+    "yavi": "La Quiaca",
+    "susques": "Susques",
   };
 
   // ---------------------------------------------------------------
@@ -45,29 +51,15 @@
       .replace(/[̀-ͯ]/g, "");
   }
 
-  // Cruce Registro General <-> Registro B: usa Código + Nombre + Apellido juntos
-  // (no alcanza con el nombre solo porque se repite entre personas distintas,
-  // y el código solo tampoco porque va a haber códigos distintos cargados).
-  function personKey(p) {
-    return normalize(p.Codigo) + "|" + normalize(p.Nombre) + "|" + normalize(p.Apellido);
+  function numPrefix(s) {
+    const m = /^\s*(\d+)/.exec(s || "");
+    return m ? parseInt(m[1], 10) : 1e9;
   }
-
-  function loadGeocodeCache() {
-    try {
-      return JSON.parse(localStorage.getItem(GEOCODE_CACHE_KEY) || "{}");
-    } catch (e) {
-      return {};
-    }
+  function byNumberedName(a, b) {
+    return numPrefix(a) - numPrefix(b) || String(a).localeCompare(String(b), "es");
   }
-  function saveGeocodeCache(cache) {
-    try {
-      localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(cache));
-    } catch (e) {}
-  }
-
-  // Orden se repite entre instituciones: la clave de una persona es Institución + Orden
-  function personaId(p) {
-    return String(p.Institucion || "") + "||" + String(p.Orden);
+  function fmtN(n) {
+    return Number(n || 0).toLocaleString("es-AR");
   }
 
   function getObservacion(p) {
@@ -75,126 +67,84 @@
   }
 
   async function saveObservacion(p, texto) {
-    const token = window.NexusAuth.getToken();
-    const res = await fetch(API_BASE + "/nexus-observacion", {
-      method: "POST",
-      headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify({ token, row_number: p.row_number, institucion: p.Institucion, orden: p.Orden, observacion: texto }),
-    });
-    if (res.status === 401) {
-      window.NexusAuth.forceLogin();
-      throw new Error("Sesión vencida");
-    }
-    const data = await res.json();
+    const data = await window.NexusAuth.rpc("nx_observacion", { p_row: p.row_number, p_texto: texto });
     if (!data.ok) throw new Error(data.error || "No se pudo guardar");
     p.Observacion = texto;
   }
 
-  // ---------------------------------------------------------------
-  // Geocoding (Nominatim / OpenStreetMap) — etapa gratuita, sin API key.
-  // Más adelante se reemplaza por Google Maps API (pago) sin tocar el resto del front:
-  // alcanza con cambiar esta función por una que llame a la Geocoding API de Google.
-  // ---------------------------------------------------------------
-  async function geocode(address) {
-    const cache = loadGeocodeCache();
-    if (cache[address]) return cache[address];
-    try {
-      const url =
-        "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ar&q=" +
-        encodeURIComponent(address);
-      const res = await fetch(url, { headers: { Accept: "application/json" } });
-      const data = await res.json();
-      if (data && data[0]) {
-        const coords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-        cache[address] = coords;
-        saveGeocodeCache(cache);
-        return coords;
-      }
-    } catch (e) {
-      console.warn("geocode fallo", address, e);
-    }
-    return null;
+  function cleanName(s) {
+    return String(s || "").replace(/^\s*\d+\s*-\s*/, "").trim();
   }
 
-  function locality(p) {
-    return DEPTO_LOCALITY[p.Departamento] || p.Departamento;
+  function locality(deptoRaw) {
+    const k = normalize(cleanName(deptoRaw));
+    return DEPTO_LOCALITY[k] || cleanName(deptoRaw);
   }
 
-  function fullAddress(p) {
-    return p.Direccion + " " + p.Numero + ", " + locality(p) + ", Jujuy, Argentina";
-  }
-
-  function fullAddressInstitucion(p) {
-    return p["Direccion de Institucion"] + ", " + locality(p) + ", Jujuy, Argentina";
+  function fullAddressInstitucion(inst) {
+    return inst.dir + ", " + locality(inst.depto) + ", Jujuy, Argentina";
   }
 
   function googleMapsUrl(p) {
-    const q = p.Direccion + " " + p.Numero + ", " + locality(p) + ", Jujuy, Argentina";
+    const q = p.Direccion + " " + p.Numero + ", " + locality(p.Departamento) + ", Jujuy, Argentina";
     return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q);
   }
 
-  function googleMapsUrlInstitucion(p) {
-    return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(fullAddressInstitucion(p));
+  function googleMapsUrlInstitucion(inst) {
+    return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(fullAddressInstitucion(inst));
   }
 
-  // Búsqueda externa: solo un link a Google (sin API, sin costo) — no hay forma
-  // gratuita de contar coincidencias reales, así que no se intenta.
+  // Búsqueda externa: solo un link a Google (sin API, sin costo)
   function googleSearchUrl(p) {
     const q = [p.Codigo, p.Nombre, p.Apellido].filter(Boolean).join(" ");
     return "https://www.google.com/search?q=" + encodeURIComponent(q);
   }
 
-  // Búsqueda interna: lleva a la pestaña Buscador con código+nombre+apellido cargado
-  function jumpToBuscador(p) {
+  // Búsqueda interna: lleva a la pestaña Buscador con el texto cargado
+  function jumpToBuscadorQuery(texto) {
     const tabBtn = document.querySelector('.tab-btn[data-tab="buscador"]');
     if (tabBtn) tabBtn.click();
     const input = document.getElementById("input-codigo");
     if (!input) return;
-    input.value = p.Apellido + " " + p.Nombre;
-    renderCodigoResults(input.value.trim());
+    input.value = texto;
+    runSearch(texto.trim());
     input.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  function jumpToBuscador(p) {
+    jumpToBuscadorQuery(p.Apellido + " " + p.Nombre);
+  }
+
+  function instById(id) {
+    return STATE.insts.find((i) => i.id === id) || null;
   }
 
   // ---------------------------------------------------------------
-  // Carga de datos
+  // Carga de datos (la base de Supabase responde por funciones, con el token de sesión)
   // ---------------------------------------------------------------
   async function loadData() {
-    const token = window.NexusAuth.getToken();
-    const res = await fetch(API_BASE + "/nexus-data?token=" + encodeURIComponent(token));
-    if (res.status === 401) {
-      window.NexusAuth.forceLogin();
-      throw new Error("Sesión vencida");
-    }
-    const text = await res.text();
-    applyData(JSON.parse(text), text);
+    const data = await window.NexusAuth.rpc("nx_resumen");
+    applyData(data);
     window.dispatchEvent(new CustomEvent("nexus:data-ready"));
   }
 
-  function applyData(data, rawText) {
-    STATE.general = (data.general || []).filter(hasContent);
-    STATE.registroB = (data.registroB || []).filter(hasContent);
-    STATE.dataSig = rawText.length + ":" + hashStr(rawText);
-    const bKeys = new Set(STATE.registroB.map(personKey));
-    STATE.general.forEach((p) => {
-      p._enB = bKeys.has(personKey(p));
-    });
-    window.NexusData = { general: STATE.general, registroB: STATE.registroB };
-  }
-
-  // Descarta filas vacías o con solo espacios (una fila "en blanco" de la planilla no es una persona)
-  function hasContent(row) {
-    return Object.keys(row).some((k) => k !== "row_number" && String(row[k] == null ? "" : row[k]).trim() !== "");
-  }
-
-  function hashStr(str) {
-    let h = 5381;
-    for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
-    return h;
+  function applyData(data) {
+    STATE.insts = data.instituciones || [];
+    STATE.version = data.version;
+    STATE.totals = {
+      general: data.total_general || 0,
+      b: data.total_b || 0,
+      cruzan: data.cruzan || 0,
+      ubicadas: data.ubicadas || 0,
+      ubicadas_b: data.ubicadas_b || 0,
+    };
+    STATE.peopleCache.clear();
+    // globe.js solo necesita las cantidades
+    window.NexusData = { general: { length: STATE.totals.general }, registroB: { length: STATE.totals.b } };
   }
 
   // ---------------------------------------------------------------
   // Actualización automática: cada REFRESH_MS (y al volver a la pestaña del navegador)
-  // se vuelve a leer la planilla; si algo cambió se redibuja todo sin recargar la página.
+  // se consulta la versión de los datos; si cambió se recarga y se redibuja sin recargar la página.
   // ---------------------------------------------------------------
   const REFRESH_MS = 60000;
   let refreshing = false;
@@ -209,20 +159,12 @@
     if (refreshing || document.hidden) return;
     refreshing = true;
     try {
-      const token = window.NexusAuth.getToken();
-      if (!token) return;
-      const res = await fetch(API_BASE + "/nexus-data?token=" + encodeURIComponent(token));
-      if (res.status === 401) {
-        window.NexusAuth.forceLogin();
-        return;
-      }
-      if (!res.ok) return;
-      const text = await res.text();
+      if (!window.NexusAuth.getToken()) return;
+      const v = await window.NexusAuth.rpc("nx_version");
       lastRefreshAt = Date.now();
-      const sig = text.length + ":" + hashStr(text);
       setLiveStamp();
-      if (sig === STATE.dataSig) return;
-      applyData(JSON.parse(text), text);
+      if (v.version === STATE.version) return;
+      applyData(await window.NexusAuth.rpc("nx_resumen"));
       rerenderAll();
       window.dispatchEvent(new CustomEvent("nexus:data-updated"));
     } catch (e) {
@@ -236,7 +178,7 @@
     const el = document.getElementById("live-stamp");
     if (!el) return;
     const d = new Date();
-    el.textContent = "Sincronizado con las planillas · " + d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+    el.textContent = "Sincronizado con la base de datos · " + d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
   }
 
   function rerenderAll() {
@@ -244,12 +186,15 @@
     populateDeptoSelect();
     populateDistritoSelect();
     renderInstGrid();
-    populateCodigoDatalist();
     const input = document.getElementById("input-codigo");
-    if (input && input.value.trim() && !userIsTypingObservation()) renderCodigoResults(input.value.trim());
+    if (input && input.value.trim() && !userIsTypingObservation()) runSearch(input.value.trim());
     const mapaActive = document.getElementById("tab-mapa").classList.contains("active");
     if (STATE.mapaTabVisitada && STATE.map && STATE.mapMode === "instituciones") {
       if (mapaActive) populateInstitutionLayer();
+    }
+    if (STATE.selectedInstId && !userIsTypingObservation()) {
+      const inst = instById(STATE.selectedInstId);
+      if (inst) selectInstitucion(inst, { silent: true });
     }
     if (OSM.map) renderOsm({ keepView: true });
   }
@@ -262,8 +207,6 @@
     });
   }
 
-  // ---------------------------------------------------------------
-  // Tabs
   // ---------------------------------------------------------------
   function setupTabs() {
     document.querySelectorAll(".tab-btn").forEach((btn) => {
@@ -294,10 +237,12 @@
     }
     requestAnimationFrame(tick);
   }
-
+  // ---------------------------------------------------------------
+  // Inicio — números animados + dona
+  // ---------------------------------------------------------------
   function renderInicio() {
-    const total = STATE.general.length;
-    const totalB = STATE.registroB.length;
+    const total = STATE.totals.general;
+    const totalB = STATE.totals.b;
     const pct = total ? (totalB / total) * 100 : 0;
 
     document.getElementById("stat-general-pct").textContent = "100%";
@@ -322,12 +267,12 @@
   // Mapa: Departamento -> Distrito -> Instituciones -> Personas
   // ---------------------------------------------------------------
   function uniqueSorted(arr) {
-    return Array.from(new Set(arr)).sort((a, b) => a.localeCompare(b, "es"));
+    return Array.from(new Set(arr)).sort(byNumberedName);
   }
 
   function populateDeptoSelect() {
     const sel = document.getElementById("sel-depto");
-    const deptos = uniqueSorted(STATE.general.map((p) => p.Departamento).filter(Boolean));
+    const deptos = uniqueSorted(STATE.insts.map((i) => i.depto).filter(Boolean));
     while (sel.options.length > 1) sel.remove(1);
     deptos.forEach((d) => {
       const opt = document.createElement("option");
@@ -356,7 +301,7 @@
       return;
     }
     const distritos = uniqueSorted(
-      STATE.general.filter((p) => p.Departamento === STATE.selectedDepto).map((p) => p.Distrito).filter(Boolean)
+      STATE.insts.filter((i) => i.depto === STATE.selectedDepto).map((i) => i.distrito).filter(Boolean)
     );
     distritos.forEach((d) => {
       const opt = document.createElement("option");
@@ -373,7 +318,6 @@
       renderInstitutionMarkers();
     };
   }
-
 
   // ---------------------------------------------------------------
   // Buscador de instituciones con sugerencias (todas las palabras, en cualquier orden)
@@ -404,34 +348,29 @@
     }
     return open ? out + "</mark>" : out;
   }
-
   function institutionIndex() {
-    const map = new Map();
-    STATE.general.forEach((p) => {
-      if (!p.Institucion) return;
-      const key = p.Institucion + "||" + p.Departamento;
-      let e = map.get(key);
-      if (!e) {
-        e = { name: p.Institucion, depto: p.Departamento, distritos: new Set(), count: 0, norm: normalize(p.Institucion) };
-        map.set(key, e);
-      }
-      e.distritos.add(p.Distrito);
-      e.count++;
-    });
-    return Array.from(map.values());
+    return STATE.insts.map((i) => ({
+      id: i.id,
+      name: i.nombre,
+      depto: i.depto,
+      distritos: new Set([i.distrito]),
+      count: i.personas,
+      norm: normalize(i.nombre),
+    }));
   }
 
   function goToInstitution(entry) {
+    const inst = instById(entry.id);
+    if (!inst) return;
     const selD = document.getElementById("sel-depto");
-    selD.value = entry.depto;
-    STATE.selectedDepto = entry.depto;
+    selD.value = inst.depto;
+    STATE.selectedDepto = inst.depto;
     STATE.selectedDistrito = "";
     populateDistritoSelect();
     renderInstGrid();
     clearDetail();
     renderInstitutionMarkers();
-    const people = scopedPeople().filter((p) => p.Institucion === entry.name);
-    selectInstitucion(entry.name, people);
+    selectInstitucion(inst);
   }
 
   function setupInstSearch() {
@@ -472,13 +411,13 @@
       if (!total) {
         list.innerHTML = '<li class="sg-empty">No hay instituciones con esas palabras</li>';
       } else {
-        items.forEach((e, k) => {
+        items.forEach((e) => {
           const li = document.createElement("li");
           li.setAttribute("role", "option");
           li.innerHTML =
             highlightWords(e.name, words) +
-            '<span class="sg-sub">' + escapeHtml(e.depto) + " · " + escapeHtml(Array.from(e.distritos).join(", ")) +
-            " · " + e.count + " persona(s)</span>";
+            '<span class="sg-sub">' + escapeHtml(cleanName(e.depto)) + " · " + escapeHtml(cleanName(Array.from(e.distritos).join(", "))) +
+            " · " + fmtN(e.count) + " persona(s)</span>";
           li.addEventListener("mousedown", (ev) => { ev.preventDefault(); choose(e); });
           list.appendChild(li);
         });
@@ -509,10 +448,10 @@
     });
   }
 
-  function scopedPeople() {
-    return STATE.general.filter((p) => {
-      if (STATE.selectedDepto && p.Departamento !== STATE.selectedDepto) return false;
-      if (STATE.selectedDistrito && p.Distrito !== STATE.selectedDistrito) return false;
+  function scopedInsts() {
+    return STATE.insts.filter((i) => {
+      if (STATE.selectedDepto && i.depto !== STATE.selectedDepto) return false;
+      if (STATE.selectedDistrito && i.distrito !== STATE.selectedDistrito) return false;
       return true;
     });
   }
@@ -534,108 +473,100 @@
       grid.innerHTML = '<div class="empty-hint">Elegí un departamento para ver sus instituciones.</div>';
       return;
     }
-    const people = scopedPeople();
-    const byInst = {};
-    people.forEach((p) => {
-      byInst[p.Institucion] = byInst[p.Institucion] || [];
-      byInst[p.Institucion].push(p);
-    });
-    const names = uniqueSorted(Object.keys(byInst));
-    if (!names.length) {
+    const insts = scopedInsts().sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    if (!insts.length) {
       grid.innerHTML = '<div class="empty-hint">No hay instituciones cargadas en este recorte.</div>';
       return;
     }
-    names.forEach((name) => {
+    insts.forEach((inst) => {
       const card = document.createElement("div");
       card.className = "inst-card";
-      card.dataset.inst = name;
+      card.dataset.inst = inst.id;
+      if (inst.id === STATE.selectedInstId) card.classList.add("active");
       card.innerHTML =
-        '<span class="inst-icon">' +
-        instIcon() +
-        "</span>" +
-        '<span><span class="inst-name">' +
-        name +
-        '</span><div class="inst-count">' +
-        byInst[name].length +
-        " persona(s)</div></span>";
-      card.addEventListener("click", () => selectInstitucion(name, byInst[name]));
+        '<span class="inst-icon">' + instIcon() + "</span>" +
+        '<span><span class="inst-name">' + escapeHtml(inst.nombre) + '</span><div class="inst-count">' +
+        fmtN(inst.personas) + " persona(s)</div></span>";
+      card.addEventListener("click", () => selectInstitucion(inst));
       grid.appendChild(card);
     });
   }
 
   function clearDetail() {
+    STATE.selectedInstId = null;
     document.getElementById("inst-detail").hidden = true;
     document.getElementById("inst-detail").innerHTML = "";
     hideSelectedPersonCard();
   }
 
-  function renderInstDetail(people) {
+  const CHIPS_MAX = 300;
+
+  function renderInstDetail(inst, people) {
     const detail = document.getElementById("inst-detail");
     detail.hidden = false;
-    const ref = people[0]; // dirección/ubicación de la institución: igual para todo el grupo
+    const chips = people.slice(0, CHIPS_MAX);
     detail.innerHTML =
-      "<h3>" +
-      STATE.selectedInstitucion +
-      "</h3>" +
+      "<h3>" + escapeHtml(inst.nombre) + "</h3>" +
       '<div class="inst-fields">' +
-      "<div><b>Dirección</b>" +
-      (ref["Direccion de Institucion"] || "—") +
-      "</div>" +
-      "<div><b>Ubicación</b>" +
-      ref.Departamento +
-      " · " +
-      ref.Distrito +
-      "</div>" +
-      "<div><b>Personas cargadas</b>" +
-      people.length +
-      "</div>" +
+      "<div><b>Dirección</b>" + escapeHtml(inst.dir || "—") + "</div>" +
+      "<div><b>Ubicación</b>" + escapeHtml(cleanName(inst.depto)) + " · " + escapeHtml(cleanName(inst.distrito || "")) + "</div>" +
+      "<div><b>Personas cargadas</b>" + fmtN(inst.personas) + "</div>" +
       "</div>" +
       '<div class="result-links">' +
-      '<a class="btn btn-maps" target="_blank" rel="noopener" href="' +
-      googleMapsUrlInstitucion(ref) +
-      '">Cómo llegar</a>' +
+      '<a class="btn btn-maps" target="_blank" rel="noopener" href="' + googleMapsUrlInstitucion(inst) + '">Cómo llegar</a>' +
       "</div>" +
       '<div class="point-list">' +
-      people
+      chips
         .map(
           (p) =>
-            '<span class="point-chip"><span class="codigo-mono">' +
-            p.Codigo +
-            "</span> · " +
-            p.Apellido +
-            " " +
-            p.Nombre +
-            " · Orden " +
-            p.Orden +
-            "</span>"
+            '<span class="point-chip"><span class="codigo-mono">' + escapeHtml(p.Codigo) + "</span> · " +
+            escapeHtml(p.Apellido + " " + p.Nombre) + " · Orden " + escapeHtml(p.Orden) + "</span>"
         )
         .join("") +
+      (people.length > CHIPS_MAX
+        ? '<span class="point-chip">… y ' + fmtN(people.length - CHIPS_MAX) + " más (usá el Buscador para encontrar a una persona)</span>"
+        : "") +
       "</div>" +
-      '<p class="planilla-auto-note">Mostrando Planilla General (' +
-      people.length +
-      ") en el mapa — tocá Planilla B para ver esos en cambio.</p>" +
+      '<p class="planilla-auto-note">Mostrando Planilla General (' + fmtN(people.length) + ") en el mapa — tocá Planilla B para ver esos en cambio.</p>" +
       '<div class="planilla-btns">' +
-      '<button class="btn btn-b" id="btn-planilla-b">Planilla B (' +
-      people.filter((p) => p._enB).length +
-      ")</button>" +
+      '<button class="btn btn-b" id="btn-planilla-b">Planilla B (' + fmtN(people.filter((p) => p._enB).length) + ")</button>" +
       "</div>";
 
     document.getElementById("btn-planilla-b").addEventListener("click", () => {
-      showPersonMarkers(
-        people.filter((p) => p._enB),
-        "b"
-      );
+      showPersonMarkers(inst, people.filter((p) => p._enB), "b");
     });
   }
 
-  function selectInstitucion(name, people) {
+  async function loadPeople(inst) {
+    if (STATE.peopleCache.has(inst.id)) return STATE.peopleCache.get(inst.id);
+    const people = await window.NexusAuth.rpc("nx_personas", { p_inst: inst.id, p_limit: 8000 });
+    people.forEach((p) => STATE.rowIndex.set(p.row_number, p));
+    STATE.peopleCache.set(inst.id, people);
+    return people;
+  }
+
+  async function selectInstitucion(inst, opts) {
+    const silent = opts && opts.silent;
+    STATE.selectedInstId = inst.id;
     document.querySelectorAll(".inst-card").forEach((c) => {
-      c.classList.toggle("active", c.dataset.inst === name);
+      c.classList.toggle("active", c.dataset.inst === String(inst.id));
     });
-    STATE.selectedInstitucion = name;
-    renderInstDetail(people);
-    document.getElementById("inst-detail").scrollIntoView({ behavior: "smooth", block: "nearest" });
-    focusInstitutionOnMap(name, people);
+    const detail = document.getElementById("inst-detail");
+    if (!silent) {
+      detail.hidden = false;
+      detail.innerHTML = "<h3>" + escapeHtml(inst.nombre) + '</h3><p class="planilla-auto-note">Cargando personas…</p>';
+      detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    let people;
+    try {
+      people = await loadPeople(inst);
+    } catch (e) {
+      if (STATE.selectedInstId === inst.id) detail.innerHTML = '<p class="planilla-auto-note">No se pudieron cargar las personas. Probá de nuevo.</p>';
+      return;
+    }
+    if (STATE.selectedInstId !== inst.id) return; // eligió otra mientras cargaba
+    renderInstDetail(inst, people);
+    if (!silent) focusInstitutionOnMap(inst, people);
   }
 
   // ---------------------------------------------------------------
@@ -661,7 +592,7 @@
       const btn = document.querySelector(".popup-btn-buscar");
       if (!btn) return;
       btn.addEventListener("click", () => {
-        const p = STATE.general.find((x) => personaId(x) === decodeURIComponent(btn.dataset.key));
+        const p = STATE.rowIndex.get(parseInt(btn.dataset.row, 10));
         if (p) jumpToBuscador(p);
       });
     });
@@ -705,35 +636,14 @@
   function popupHtml(p) {
     return (
       '<div class="map-popup">' +
-      "<b>" +
-      p.Codigo +
-      " — " +
-      p.Apellido +
-      " " +
-      p.Nombre +
-      "</b><br>" +
-      "<small>" +
-      p.Departamento +
-      " · " +
-      p.Distrito +
-      "</small><br>" +
-      p.Direccion +
-      " " +
-      p.Numero +
-      "<br>" +
-      "<i>" +
-      p.Institucion +
-      "</i>" +
+      "<b>" + escapeHtml(p.Codigo + " — " + p.Apellido + " " + p.Nombre) + "</b><br>" +
+      "<small>" + escapeHtml(cleanName(p.Departamento) + " · " + cleanName(p.Distrito)) + "</small><br>" +
+      escapeHtml(p.Direccion + " " + p.Numero) + "<br>" +
+      "<i>" + escapeHtml(p.Institucion) + "</i>" +
       '<div class="popup-actions">' +
-      '<button class="btn btn-secondary popup-btn-buscar" data-key="' +
-      encodeURIComponent(personaId(p)) +
-      '">🔍 Buscar</button>' +
-      '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
-      googleSearchUrl(p) +
-      '">Google</a>' +
-      '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
-      googleMapsUrl(p) +
-      '">Cómo llegar</a>' +
+      '<button class="btn btn-secondary popup-btn-buscar" data-row="' + p.row_number + '">🔍 Buscar</button>' +
+      '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' + googleSearchUrl(p) + '">Google</a>' +
+      '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' + googleMapsUrl(p) + '">Cómo llegar</a>' +
       "</div>" +
       "</div>"
     );
@@ -795,73 +705,55 @@
     box.innerHTML = "";
   }
 
-  function institucionPopupHtml(name, people) {
-    const ref = people[0];
+  function institucionPopupHtml(inst) {
     return (
       '<div class="map-popup">' +
-      "<b>" +
-      name +
-      "</b><br>" +
-      (ref["Direccion de Institucion"] || "—") +
-      "<br>" +
-      "<small>" +
-      ref.Departamento +
-      " · " +
-      ref.Distrito +
-      "</small><br>" +
-      people.length +
-      " persona(s) cargada(s)" +
+      "<b>" + escapeHtml(inst.nombre) + "</b><br>" +
+      escapeHtml(inst.dir || "—") + "<br>" +
+      "<small>" + escapeHtml(cleanName(inst.depto) + " · " + cleanName(inst.distrito || "")) + "</small><br>" +
+      fmtN(inst.personas) + " persona(s) cargada(s)" +
       '<div class="popup-actions">' +
-      '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
-      googleMapsUrlInstitucion(ref) +
-      '">Cómo llegar</a>' +
+      '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' + googleMapsUrlInstitucion(inst) + '">Cómo llegar</a>' +
       "</div>" +
       "</div>"
     );
   }
 
-  // Dibuja los puntos azules de instituciones. Si se pasa onlyName, solo esa
-  // (las demás quedan ocultas) — usado al enfocar una institución elegida.
-  async function populateInstitutionLayer(onlyName) {
+  // Dibuja los puntos azules de instituciones (ubicación guardada en la base). Si se pasa onlyInst, solo esa.
+  function populateInstitutionLayer(onlyInst) {
     const map = ensureMap();
     clearMarkers(STATE.institutionMarkers);
-
-    const people = scopedPeople();
-    const byInst = {};
-    people.forEach((p) => {
-      byInst[p.Institucion] = byInst[p.Institucion] || [];
-      byInst[p.Institucion].push(p);
-    });
-    const names = onlyName ? [onlyName] : Object.keys(byInst);
-
+    const list = onlyInst ? [onlyInst] : scopedInsts();
     const bounds = [];
-    for (const name of names) {
-      const group = byInst[name];
-      if (!group) continue;
-      const coords = await geocode(fullAddressInstitucion(group[0]));
-      if (!coords) continue;
-      bounds.push([coords.lat, coords.lng]);
+    let sinUbicar = 0;
+    for (const inst of list) {
+      if (inst.lat == null || inst.lng == null) { sinUbicar++; continue; }
+      bounds.push([inst.lat, inst.lng]);
       const marker = new google.maps.Marker({
-        position: { lat: coords.lat, lng: coords.lng },
+        position: { lat: inst.lat, lng: inst.lng },
         map,
         icon: coloredIcon("#2D6CDF"),
       });
       marker.addListener("click", () => {
-        STATE.infoWindow.setContent(institucionPopupHtml(name, group));
+        STATE.infoWindow.setContent(institucionPopupHtml(inst));
         STATE.infoWindow.open({ anchor: marker, map });
-        selectInstitucion(name, group);
+        selectInstitucion(inst);
       });
       STATE.institutionMarkers.push(marker);
     }
+    STATE.instSinUbicar = sinUbicar;
     return bounds;
   }
 
+  function instNote() {
+    const base = "Tocá una institución para ver sus datos";
+    return STATE.instSinUbicar ? base + " · " + STATE.instSinUbicar + " sin ubicar todavía" : base;
+  }
+
   // Modo "instituciones" (azul) — siempre visible, se recalcula con el filtro de depto/distrito
-  async function renderInstitutionMarkers() {
+  function renderInstitutionMarkers() {
     STATE.mapMode = "instituciones";
     document.getElementById("btn-volver-instituciones").hidden = true;
-    document.getElementById("map-note").textContent =
-      "Tocá una institución para ver sus datos";
     hideSelectedPersonCard();
 
     const map = ensureMap();
@@ -869,24 +761,22 @@
     clearMarkers(STATE.reachCircles);
     setTimeout(() => google.maps.event.trigger(map, "resize"), 50);
 
-    const bounds = await populateInstitutionLayer();
+    const bounds = populateInstitutionLayer();
+    document.getElementById("map-note").textContent = instNote();
     fitToBounds(map, bounds);
   }
 
-  // Al elegir una institución: las demás instituciones se ocultan (solo queda
-  // la elegida) y se muestra automáticamente su Planilla General en el mapa.
-  async function focusInstitutionOnMap(name, people) {
-    await populateInstitutionLayer(name);
-    showPersonMarkers(people, "general");
+  // Al elegir una institución: las demás se ocultan y se muestra su Planilla General en el mapa.
+  function focusInstitutionOnMap(inst, people) {
+    populateInstitutionLayer(inst);
+    showPersonMarkers(inst, people, "general");
   }
 
   // Modo "personas" (verde=Planilla General / rojo=Planilla B) — el punto azul de
-  // la institución queda visible y se agrega un círculo de "radio de alcance"
-  // hasta las personas que se muestran alrededor.
-  async function showPersonMarkers(people, kind) {
+  // la institución queda visible y se agrega un círculo de "radio de alcance".
+  function showPersonMarkers(inst, people, kind) {
     STATE.mapMode = "personas";
     document.getElementById("btn-volver-instituciones").hidden = false;
-    document.getElementById("map-note").textContent = "Tocá un punto para ver a la persona";
     hideSelectedPersonCard();
 
     const map = ensureMap();
@@ -895,23 +785,18 @@
     setTimeout(() => google.maps.event.trigger(map, "resize"), 50);
 
     const color = kind === "b" ? "#EB5757" : "#27AE60";
-    const institCoords = people[0] ? await geocode(fullAddressInstitucion(people[0])) : null;
-
+    const hasInst = inst.lat != null && inst.lng != null;
     const bounds = [];
-    if (institCoords) bounds.push([institCoords.lat, institCoords.lng]);
+    if (hasInst) bounds.push([inst.lat, inst.lng]);
     let maxDist = 0;
+    let ubicadas = 0;
     for (const p of people) {
-      const coords = await geocode(fullAddress(p));
-      if (!coords) continue;
-      bounds.push([coords.lat, coords.lng]);
-      if (institCoords) {
-        maxDist = Math.max(maxDist, haversineMeters(institCoords.lat, institCoords.lng, coords.lat, coords.lng));
-      }
-      const marker = new google.maps.Marker({
-        position: { lat: coords.lat, lng: coords.lng },
-        map,
-        icon: coloredIcon(color),
-      });
+      const lat = p.Latitud, lng = p.Longitud;
+      if (lat == null || lng == null) continue;
+      ubicadas++;
+      bounds.push([lat, lng]);
+      if (hasInst) maxDist = Math.max(maxDist, haversineMeters(inst.lat, inst.lng, lat, lng));
+      const marker = new google.maps.Marker({ position: { lat, lng }, map, icon: coloredIcon(color) });
       marker.addListener("click", () => {
         STATE.infoWindow.setContent(popupHtml(p));
         STATE.infoWindow.open({ anchor: marker, map });
@@ -920,93 +805,86 @@
       STATE.personMarkers.push(marker);
     }
 
-    if (institCoords) {
+    if (hasInst && ubicadas) {
       const radius = Math.min(6000, Math.max(300, maxDist * 1.25));
-      const circle = new google.maps.Circle({
-        center: { lat: institCoords.lat, lng: institCoords.lng },
-        radius,
-        strokeColor: "#2D6CDF",
-        strokeWeight: 1.5,
-        strokeOpacity: 0.7,
-        fillColor: "#2D6CDF",
-        fillOpacity: 0.07,
-        map,
-      });
-      STATE.reachCircles.push(circle);
+      STATE.reachCircles.push(
+        new google.maps.Circle({
+          center: { lat: inst.lat, lng: inst.lng },
+          radius,
+          strokeColor: "#2D6CDF",
+          strokeWeight: 1.5,
+          strokeOpacity: 0.7,
+          fillColor: "#2D6CDF",
+          fillOpacity: 0.07,
+          map,
+        })
+      );
     }
 
+    const faltan = people.length - ubicadas;
+    document.getElementById("map-note").textContent =
+      "Tocá un punto para ver a la persona" + (faltan > 0 ? " · " + fmtN(faltan) + " sin ubicar todavía" : "");
     fitToBounds(map, bounds);
   }
 
-  // Vuelve a mostrar todas las instituciones (se habían ocultado todas menos
-  // la elegida) y saca los puntos verdes/rojos + el círculo de alcance.
-  async function exitPersonMode() {
+  // Vuelve a mostrar todas las instituciones y saca los puntos verdes/rojos + el círculo de alcance.
+  function exitPersonMode() {
     STATE.mapMode = "instituciones";
     clearMarkers(STATE.personMarkers);
     clearMarkers(STATE.reachCircles);
     document.getElementById("btn-volver-instituciones").hidden = true;
-    document.getElementById("map-note").textContent = "Tocá una institución para ver sus datos";
     hideSelectedPersonCard();
     const map = ensureMap();
-    const bounds = await populateInstitutionLayer();
+    const bounds = populateInstitutionLayer();
+    document.getElementById("map-note").textContent = instNote();
     fitToBounds(map, bounds);
   }
 
   // ---------------------------------------------------------------
-  // Buscador por código — input libre (no desplegable fijo): hoy filtra
-  // contra los datos embebidos, el día que esto hable con el Google Sheet
-  // en vivo la lista de códigos posibles puede crecer sin tocar el front.
+  // Buscador: código, o nombre y apellido en cualquier orden. Busca en la base (620.000 personas),
+  // no en el navegador; se espera un instante a que termine de escribir.
   // ---------------------------------------------------------------
-  function populateCodigoDatalist() {
-    const list = document.getElementById("codigos-list");
-    list.innerHTML = "";
-    const codigos = uniqueSorted(STATE.general.map((p) => String(p.Codigo || "")).filter(Boolean)).sort((a, b) => {
-      return parseInt(a.replace(/\D/g, ""), 10) - parseInt(b.replace(/\D/g, ""), 10);
-    });
-    codigos.forEach((c) => {
-      const opt = document.createElement("option");
-      opt.value = c;
-      list.appendChild(opt);
-    });
+  let searchSeq = 0;
+  let searchTimer = null;
 
+  function setupBuscador() {
     const input = document.getElementById("input-codigo");
-    if (input.dataset.bound) return;
-    input.dataset.bound = "1";
+    input.removeAttribute("list");
+    const dl = document.getElementById("codigos-list");
+    if (dl) dl.remove();
     input.addEventListener("input", () => {
-      renderCodigoResults(input.value.trim());
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => runSearch(input.value.trim()), 280);
     });
   }
 
-  function matchesCodigo(valorBuscado, codigoReal) {
-    const a = normalize(valorBuscado);
-    const b = normalize(codigoReal);
-    if (!a) return false;
-    // admite "5", "codigo 5", "código 5"
-    const soloNumero = a.replace(/[^\d]/g, "");
-    const numeroReal = b.replace(/[^\d]/g, "");
-    if (soloNumero && soloNumero === numeroReal && /^(codigo|código)?\s*\d+$/i.test(a)) return true;
-    return b.includes(a);
+  async function runSearch(valor) {
+    const wrap = document.getElementById("codigo-results");
+    const my = ++searchSeq;
+    if (!valor) {
+      wrap.innerHTML = "";
+      return;
+    }
+    wrap.innerHTML = '<div class="empty-hint">Buscando…</div>';
+    let res;
+    try {
+      res = await window.NexusAuth.rpc("nx_buscar", { p_q: valor, p_limit: 60 });
+    } catch (e) {
+      if (my === searchSeq) wrap.innerHTML = '<div class="empty-hint">No se pudo buscar. Probá de nuevo.</div>';
+      return;
+    }
+    if (my !== searchSeq) return;
+    renderCodigoResults(res.rows || [], res.more);
   }
 
-  // Búsqueda combinada: código, o nombre+apellido (en cualquier orden)
-  function matchesQuery(valorBuscado, p) {
-    if (matchesCodigo(valorBuscado, p.Codigo)) return true;
-    const a = normalize(valorBuscado);
-    const nombreCompleto = normalize(p.Nombre + " " + p.Apellido);
-    const apellidoNombre = normalize(p.Apellido + " " + p.Nombre);
-    if (!a) return false;
-    return nombreCompleto.includes(a) || apellidoNombre.includes(a);
-  }
-
-  function renderCodigoResults(valor) {
+  function renderCodigoResults(people, more) {
     const wrap = document.getElementById("codigo-results");
     wrap.innerHTML = "";
-    if (!valor) return;
-    const people = STATE.general.filter((p) => matchesQuery(valor, p));
     if (!people.length) {
       wrap.innerHTML = '<div class="empty-hint">No hay personas que coincidan con ese código o nombre.</div>';
       return;
     }
+    people.forEach((p) => STATE.rowIndex.set(p.row_number, p));
     people.forEach((p) => {
       const card = document.createElement("div");
       card.className = "result-card";
@@ -1014,56 +892,25 @@
       card.innerHTML =
         '<div class="result-head">' +
         "<div>" +
-        '<div class="result-name">' +
-        p.Apellido +
-        " " +
-        p.Nombre +
+        '<div class="result-name">' + escapeHtml(p.Apellido + " " + p.Nombre) + "</div>" +
+        '<div class="result-sub">' + escapeHtml(p.Codigo) + " · Orden " + escapeHtml(p.Orden) + "</div>" +
         "</div>" +
-        '<div class="result-sub">' +
-        p.Codigo +
-        " · Orden " +
-        p.Orden +
-        "</div>" +
-        "</div>" +
-        '<div class="status-box ' +
-        (enB ? "is-x" : "is-check") +
-        '" title="' +
-        (enB ? "Está en Registro B" : "No está en Registro B") +
-        '">' +
-        (enB ? "✕" : "✓") +
-        "</div>" +
+        '<div class="status-box ' + (enB ? "is-x" : "is-check") + '" title="' +
+        (enB ? "Está en Registro B" : "No está en Registro B") + '">' + (enB ? "✕" : "✓") + "</div>" +
         "</div>" +
         '<div class="result-fields">' +
-        "<div><b>Departamento</b>" +
-        p.Departamento +
-        "</div>" +
-        "<div><b>Distrito</b>" +
-        p.Distrito +
-        "</div>" +
-        "<div><b>Dirección</b>" +
-        p.Direccion +
-        " " +
-        p.Numero +
-        "</div>" +
-        "<div><b>Institución</b>" +
-        p.Institucion +
-        "</div>" +
-        "<div><b>Dirección institución</b>" +
-        p["Direccion de Institucion"] +
-        "</div>" +
+        "<div><b>Departamento</b>" + escapeHtml(cleanName(p.Departamento)) + "</div>" +
+        "<div><b>Distrito</b>" + escapeHtml(cleanName(p.Distrito)) + "</div>" +
+        "<div><b>Dirección</b>" + escapeHtml(p.Direccion + " " + p.Numero) + "</div>" +
+        "<div><b>Institución</b>" + escapeHtml(p.Institucion) + "</div>" +
+        "<div><b>Dirección institución</b>" + escapeHtml(p["Direccion de Institucion"]) + "</div>" +
         "</div>" +
         '<div class="result-links">' +
-        '<a class="btn btn-maps" target="_blank" rel="noopener" href="' +
-        googleMapsUrl(p) +
-        '">Ver en Google Maps</a>' +
-        '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
-        googleSearchUrl(p) +
-        '">Buscar en Google</a>' +
+        '<a class="btn btn-maps" target="_blank" rel="noopener" href="' + googleMapsUrl(p) + '">Ver en Google Maps</a>' +
+        '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' + googleSearchUrl(p) + '">Buscar en Google</a>' +
         "</div>" +
         '<div class="obs-row">' +
-        '<textarea placeholder="Observación…">' +
-        (getObservacion(p) || "") +
-        "</textarea>" +
+        '<textarea placeholder="Observación…">' + escapeHtml(getObservacion(p)) + "</textarea>" +
         '<button class="btn btn-secondary btn-guardar-obs">Guardar</button>' +
         "</div>" +
         '<div class="obs-saved-note"></div>';
@@ -1076,7 +923,7 @@
         saveBtn.textContent = "Guardando…";
         try {
           await saveObservacion(p, textarea.value);
-          note.textContent = "Guardado en el Google Sheet.";
+          note.textContent = "Observación guardada.";
           note.classList.remove("is-error");
           note.classList.add("show");
         } catch (e) {
@@ -1091,21 +938,20 @@
 
       wrap.appendChild(card);
     });
+    if (more) {
+      const m = document.createElement("div");
+      m.className = "empty-hint";
+      m.textContent = "Hay más coincidencias — escribí más letras o el código completo para acotar.";
+      wrap.appendChild(m);
+    }
   }
 
-
   // ---------------------------------------------------------------
-  // Mapa general (OpenStreetMap / Leaflet, sin costo): todas las personas a la vez.
-  // Usa Latitud/Longitud de la planilla si existen; si faltan, geocodifica con Nominatim
-  // (1 consulta por segundo, cacheada en el navegador) y va sumando puntos.
+  // Mapa general (OpenStreetMap / Leaflet, sin costo): todas las personas ubicadas.
+  // Con muchas personas la base devuelve grupos (burbujas con cantidad) según el zoom y el
+  // recuadro visible; al acercarse aparece cada persona.
   // ---------------------------------------------------------------
-  const OSM = { map: null, layerGeneral: null, layerB: null, layerInst: null, layerReach: null, token: 0 };
-
-  function parseCoord(v) {
-    if (v === undefined || v === null || v === "") return null;
-    const n = parseFloat(String(v).replace(",", "."));
-    return isFinite(n) ? n : null;
-  }
+  const OSM = { map: null, layerGeneral: null, layerB: null, layerInst: null, layerReach: null, seq: 0, timer: null };
 
   function cssVar(name, fallback) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -1132,184 +978,178 @@
     });
   }
 
-  function osmPopupHtml(p) {
-    const tag = p._enB
+  function osmPopupHtml(it) {
+    const tag = it.b
       ? '<span class="osm-tag" style="background:' + cssVar("--c-b", "#EB5757") + '">En Planilla B</span>'
       : '<span class="osm-tag" style="background:' + cssVar("--c-general", "#27AE60") + '">Planilla General</span>';
     return (
-      '<div class="osm-popup"><b>' + escapeHtml(p.Apellido + " " + p.Nombre) + "</b>" +
-      '<div class="osm-sub">' + escapeHtml(p.Codigo || "") + " · Orden " + escapeHtml(p.Orden) + "<br>" +
-      escapeHtml(p.Direccion + " " + p.Numero) + "<br>" +
-      escapeHtml(p.Institucion || "") + "</div>" + tag +
+      '<div class="osm-popup"><b>' + escapeHtml(it.n) + "</b>" +
+      '<div class="osm-sub">' + escapeHtml(it.c || "") + " · Orden " + escapeHtml(it.o) + "<br>" +
+      escapeHtml(it.d) + "<br>" +
+      escapeHtml(it.i || "") + "</div>" + tag +
       '<button type="button" class="osm-btn-buscar">🔍 Buscar en el sistema</button></div>'
     );
   }
 
-  function osmInstPopupHtml(g, radius) {
-    const nB = g.people.filter((p) => p._enB).length;
+  function osmInstPopupHtml(inst) {
+    const radius = inst.radio;
     return (
-      '<div class="osm-popup"><b>' + escapeHtml(g.name) + "</b>" +
-      '<div class="osm-sub">' + escapeHtml(g.dir || "") + "<br>" +
-      escapeHtml(g.depto + " · " + (g.distrito || "")) + "<br>" +
-      "<b style=\"display:inline\">" + g.people.length + "</b> personas · <b style=\"display:inline\">" + nB + "</b> en Planilla B<br>" +
-      "Rango de alcance: " + (radius >= 1000 ? (radius / 1000).toFixed(1) + " km" : Math.round(radius) + " m") + "</div>" +
-      '<button type="button" class="osm-btn-inst">Abrir en el Mapa (Google)</button></div>'
+      '<div class="osm-popup"><b>' + escapeHtml(inst.nombre) + "</b>" +
+      '<div class="osm-sub">' + escapeHtml(inst.dir || "") + "<br>" +
+      escapeHtml(cleanName(inst.depto) + " · " + cleanName(inst.distrito || "")) + "<br>" +
+      '<b style="display:inline">' + fmtN(inst.personas) + '</b> personas · <b style="display:inline">' + fmtN(inst.b) + "</b> en Planilla B" +
+      (radius ? "<br>Rango de alcance: " + (radius >= 1000 ? (radius / 1000).toFixed(1) + " km" : Math.round(radius) + " m") : "") +
+      '</div><button type="button" class="osm-btn-inst">Abrir en el Mapa (Google)</button></div>'
     );
   }
 
-  function updateOsmCounts(shownG, totalG, shownB, totalB, shownI, totalI, pending) {
-    document.getElementById("osm-count-general").textContent = shownG;
-    document.getElementById("osm-count-b").textContent = shownB;
-    document.getElementById("osm-count-inst").textContent = shownI;
-    let msg = shownG + " de " + totalG + " personas en el mapa";
-    if (pending > 0) msg += " · ubicando " + pending + " más…";
-    if (totalB > shownB) msg += " · " + (totalB - shownB) + " de Planilla B sin dirección en General";
-    if (totalI > shownI && pending === 0) msg += " · " + (totalI - shownI) + " instituciones sin ubicar";
-    document.getElementById("osm-status").textContent = msg;
+  function osmCounts() {
+    const located = STATE.insts.filter((i) => i.lat != null).length;
+    document.getElementById("osm-count-general").textContent = fmtN(STATE.totals.ubicadas);
+    document.getElementById("osm-count-b").textContent = fmtN(STATE.totals.ubicadas_b);
+    document.getElementById("osm-count-inst").textContent = located;
   }
 
-  async function renderOsm(opts) {
-    if (!window.L || !OSM.map) return;
-    const myToken = ++OSM.token;
-    const people = STATE.general;
-    const totalB = STATE.registroB.length;
+  function osmStatus(msg) {
+    const t = STATE.totals;
+    let s = msg;
+    if (t.general > t.ubicadas) s += " · " + fmtN(t.general - t.ubicadas) + " personas todavía sin ubicar";
+    const sinInst = STATE.insts.filter((i) => i.lat == null).length;
+    if (sinInst) s += " · " + sinInst + " instituciones sin ubicar";
+    document.getElementById("osm-status").textContent = s;
+  }
+
+  function osmInstLayers() {
+    OSM.layerInst.clearLayers();
+    OSM.layerReach.clearLayers();
+    const colorI = cssVar("--c-inst", "#2F80ED");
+    STATE.insts.forEach((inst) => {
+      if (inst.lat == null || inst.lng == null) return;
+      let circle = null;
+      if (inst.radio) {
+        circle = L.circle([inst.lat, inst.lng], {
+          radius: inst.radio, color: colorI, weight: 1.4, dashArray: "6 6", fillColor: colorI, fillOpacity: 0.05, interactive: false,
+        }).addTo(OSM.layerReach);
+      }
+      const icon = L.divIcon({
+        className: "osm-inst-icon",
+        html: '<div class="osm-inst-badge" style="background:' + colorI + '">' + escapeHtml(compactN(inst.personas)) + "</div>",
+        iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16],
+      });
+      const m = L.marker([inst.lat, inst.lng], { icon, zIndexOffset: 1000, title: inst.nombre }).addTo(OSM.layerInst);
+      m.bindPopup(osmInstPopupHtml(inst));
+      m.on("popupopen", (e) => {
+        if (circle) circle.setStyle({ weight: 2.6, fillOpacity: 0.16 });
+        const btn = e.popup.getElement().querySelector(".osm-btn-inst");
+        if (btn) btn.addEventListener("click", () => {
+          document.querySelector('.tab-btn[data-tab="mapa"]').click();
+          goToInstitution({ id: inst.id });
+        });
+      });
+      m.on("popupclose", () => circle && circle.setStyle({ weight: 1.4, fillOpacity: 0.05 }));
+    });
+  }
+
+  function compactN(n) {
+    n = Number(n || 0);
+    if (n >= 1e6) return (n / 1e6).toFixed(1).replace(".0", "") + "M";
+    if (n >= 1e4) return Math.round(n / 1e3) + "k";
+    if (n >= 1e3) return (n / 1e3).toFixed(1).replace(".0", "") + "k";
+    return String(n);
+  }
+
+  function scheduleOsmLoad() {
+    clearTimeout(OSM.timer);
+    OSM.timer = setTimeout(loadOsmPoints, 250);
+  }
+
+  async function loadOsmPoints() {
+    if (!OSM.map) return;
+    const wantG = document.getElementById("osm-chk-general").checked;
+    const wantB = document.getElementById("osm-chk-b").checked;
+    const my = ++OSM.seq;
+    if (!wantG && !wantB) {
+      OSM.layerGeneral.clearLayers();
+      OSM.layerB.clearLayers();
+      osmStatus("Capas de personas apagadas");
+      return;
+    }
+    const b = OSM.map.getBounds();
+    const cell = (60 * 360) / (256 * Math.pow(2, OSM.map.getZoom()));
+    let res;
+    try {
+      res = await window.NexusAuth.rpc("nx_mapa", {
+        p_s: b.getSouth(), p_w: b.getWest(), p_n: b.getNorth(), p_e: b.getEast(), p_cell: cell, p_solo_b: !wantG && wantB,
+      });
+    } catch (e) {
+      osmStatus("No se pudo cargar el mapa");
+      return;
+    }
+    if (my !== OSM.seq) return;
+    OSM.layerGeneral.clearLayers();
+    OSM.layerB.clearLayers();
     const colorG = cssVar("--c-general", "#27AE60");
     const colorB = cssVar("--c-b", "#EB5757");
-    const colorI = cssVar("--c-inst", "#2F80ED");
+    const items = res.items || [];
 
-    // Instituciones: se agrupan por departamento + nombre + dirección
-    const instMap = new Map();
-    people.forEach((p) => {
-      const k = instKey(p);
-      if (!instMap.has(k)) {
-        instMap.set(k, {
-          name: p.Institucion, dir: p["Direccion de Institucion"], depto: p.Departamento, distrito: p.Distrito,
-          people: [], lat: null, lng: null, sample: p,
-        });
-      }
-      const g = instMap.get(k);
-      g.people.push(p);
-      if (g.lat === null) {
-        const la = parseCoord(p["Latitud Institucion"]), ln = parseCoord(p["Longitud Institucion"]);
-        if (la !== null && ln !== null) { g.lat = la; g.lng = ln; }
-      }
-    });
-    const insts = Array.from(instMap.values());
-
-    const located = [];
-    const pending = [];
-    people.forEach((p) => {
-      const lat = parseCoord(p.Latitud), lng = parseCoord(p.Longitud);
-      if (lat !== null && lng !== null) located.push({ p, lat, lng });
-      else pending.push(p);
-    });
-
-    function draw(list) {
-      osmSpread(list);
-      [OSM.layerGeneral, OSM.layerB, OSM.layerInst, OSM.layerReach].forEach((l) => l.clearLayers());
-      const byInst = {};
-      list.forEach((it) => { (byInst[instKey(it.p)] = byInst[instKey(it.p)] || []).push(it); });
-
-      // Instituciones + rango de alcance (círculo punteado, mismo criterio que la pestaña Mapa)
-      let shownI = 0;
-      insts.forEach((g) => {
-        if (g.lat === null) return;
-        shownI++;
-        let maxDist = 0;
-        (byInst[instKey(g.sample)] || []).forEach((it) => {
-          maxDist = Math.max(maxDist, haversineMeters(g.lat, g.lng, it.lat, it.lng));
-        });
-        const radius = Math.min(6000, Math.max(300, maxDist * 1.25));
-        const circle = L.circle([g.lat, g.lng], {
-          radius, color: colorI, weight: 1.4, dashArray: "6 6", fillColor: colorI, fillOpacity: 0.05, interactive: false,
-        }).addTo(OSM.layerReach);
-        const icon = L.divIcon({
-          className: "osm-inst-icon",
-          html: '<div class="osm-inst-badge" style="background:' + colorI + '">' + g.people.length + "</div>",
-          iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -16],
-        });
-        const m = L.marker([g.lat, g.lng], { icon, zIndexOffset: 1000, title: g.name }).addTo(OSM.layerInst);
-        m.bindPopup(osmInstPopupHtml(g, radius));
-        m.on("popupopen", (e) => {
-          circle.setStyle({ weight: 2.6, fillOpacity: 0.16 });
-          const btn = e.popup.getElement().querySelector(".osm-btn-inst");
-          if (btn) btn.addEventListener("click", () => {
-            document.querySelector('.tab-btn[data-tab="mapa"]').click();
-            goToInstitution({ depto: g.depto, name: g.name });
-          });
-        });
-        m.on("popupclose", () => circle.setStyle({ weight: 1.4, fillOpacity: 0.05 }));
-      });
-
-      let shownB = 0;
-      list.forEach((it) => {
+    if (res.mode === "points") {
+      osmSpread(items);
+      items.forEach((it) => {
         const mk = (color, layer, radius) => {
           const m = L.circleMarker([it.dLat, it.dLng], {
             radius, color: "#fff", weight: 1.5, fillColor: color, fillOpacity: 0.95,
           }).addTo(layer);
-          m.bindPopup(osmPopupHtml(it.p));
+          m.bindPopup(osmPopupHtml(it));
           m.on("popupopen", (e) => {
             const btn = e.popup.getElement().querySelector(".osm-btn-buscar");
-            if (btn) btn.addEventListener("click", () => jumpToBuscador(it.p));
+            if (btn) btn.addEventListener("click", () => jumpToBuscadorQuery(it.c));
           });
         };
-        mk(colorG, OSM.layerGeneral, 9);
-        if (it.p._enB) { mk(colorB, OSM.layerB, 6); shownB++; }
+        if (wantG) mk(colorG, OSM.layerGeneral, 9);
+        if (it.b && wantB) mk(colorB, OSM.layerB, wantG ? 6 : 9);
       });
-      applyOsmToggles();
-      return { shownB, shownI };
+      osmStatus(fmtN(items.length) + " personas a la vista");
+    } else {
+      items.forEach((c) => {
+        const size = 26 + Math.min(26, Math.round(Math.log10(c.n + 1) * 7));
+        const onlyB = !wantG && wantB;
+        const html =
+          '<div class="osm-cl" style="width:' + size + "px;height:" + size + "px;background:" + (onlyB ? colorB : colorG) + '">' +
+          escapeHtml(compactN(onlyB ? c.b : c.n)) +
+          (wantG && wantB && c.b > 0 ? '<span class="osm-cl-b" style="background:' + colorB + '">' + escapeHtml(compactN(c.b)) + "</span>" : "") +
+          "</div>";
+        const icon = L.divIcon({ className: "osm-cl-icon", html, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+        const m = L.marker([c.lat, c.lng], { icon }).addTo(onlyB ? OSM.layerB : OSM.layerGeneral);
+        m.on("click", () => OSM.map.setView([c.lat, c.lng], Math.min(OSM.map.getZoom() + 2, 18)));
+      });
+      osmStatus("Grupos de personas · acercate para ver cada una");
     }
+  }
 
-    function fit() {
-      const pts = located.map((it) => [it.lat, it.lng]).concat(insts.filter((g) => g.lat !== null).map((g) => [g.lat, g.lng]));
+  async function renderOsm(opts) {
+    if (!window.L || !OSM.map) return;
+    osmCounts();
+    osmInstLayers();
+    applyOsmToggles();
+    if (!(opts && opts.keepView)) {
+      const pts = STATE.insts.filter((i) => i.lat != null).map((i) => [i.lat, i.lng]);
       if (pts.length) OSM.map.fitBounds(L.latLngBounds(pts), { padding: [30, 30], maxZoom: 15 });
     }
-
-    let r = draw(located);
-    updateOsmCounts(located.length, people.length, r.shownB, totalB, r.shownI, insts.length, pending.length);
-    if (!(opts && opts.keepView)) fit();
-
-    // Lo que falte ubicar (sin coordenadas en la planilla) se geocodifica de a uno (límite de Nominatim) y se suma en vivo
-    const instPending = insts.filter((g) => g.lat === null);
-    const total = instPending.length + pending.length;
-    let left = total;
-    for (const g of instPending) {
-      if (myToken !== OSM.token) return;
-      const c = await geocode(fullAddressInstitucion(g.sample));
-      if (c) { g.lat = c.lat; g.lng = c.lng; }
-      left--;
-      r = draw(located);
-      updateOsmCounts(located.length, people.length, r.shownB, totalB, r.shownI, insts.length, left);
-      await new Promise((res) => setTimeout(res, 1100));
-    }
-    for (const p of pending) {
-      if (myToken !== OSM.token) return;
-      let c = await geocode(fullAddress(p));
-      if (!c) c = await geocode(p.Direccion + ", " + locality(p) + ", Jujuy, Argentina");
-      if (c) located.push({ p, lat: c.lat, lng: c.lng });
-      left--;
-      r = draw(located);
-      updateOsmCounts(located.length, people.length, r.shownB, totalB, r.shownI, insts.length, left);
-      await new Promise((res) => setTimeout(res, 1100));
-    }
-    if (myToken === OSM.token && total && !(opts && opts.keepView)) fit();
+    scheduleOsmLoad();
   }
 
   function applyOsmToggles() {
     if (!OSM.map) return;
     const want = {
-      general: document.getElementById("osm-chk-general").checked,
-      b: document.getElementById("osm-chk-b").checked,
       inst: document.getElementById("osm-chk-inst").checked,
       reach: document.getElementById("osm-chk-reach").checked,
     };
-    [["general", OSM.layerGeneral], ["b", OSM.layerB], ["inst", OSM.layerInst], ["reach", OSM.layerReach]].forEach(([k, layer]) => {
+    [["inst", OSM.layerInst], ["reach", OSM.layerReach]].forEach(([k, layer]) => {
       const on = OSM.map.hasLayer(layer);
       if (want[k] && !on) OSM.map.addLayer(layer);
       if (!want[k] && on) OSM.map.removeLayer(layer);
     });
     if (want.reach) OSM.layerReach.eachLayer((l) => l.bringToBack());
-    if (want.b && want.general) OSM.layerB.eachLayer((l) => l.bringToFront());
   }
 
   function openOsmTab() {
@@ -1327,9 +1167,9 @@
       OSM.layerGeneral = L.layerGroup().addTo(OSM.map);
       OSM.layerB = L.layerGroup().addTo(OSM.map);
       OSM.layerInst = L.layerGroup().addTo(OSM.map);
-      ["general", "b", "inst", "reach"].forEach((k) =>
-        document.getElementById("osm-chk-" + k).addEventListener("change", applyOsmToggles)
-      );
+      ["inst", "reach"].forEach((k) => document.getElementById("osm-chk-" + k).addEventListener("change", applyOsmToggles));
+      ["general", "b"].forEach((k) => document.getElementById("osm-chk-" + k).addEventListener("change", scheduleOsmLoad));
+      OSM.map.on("moveend", scheduleOsmLoad);
       renderOsm();
     } else {
       OSM.map.invalidateSize();
@@ -1341,13 +1181,19 @@
   // ---------------------------------------------------------------
   async function init() {
     setupTabs();
-    await loadData();
+    try {
+      await loadData();
+    } catch (e) {
+      if (e && e.unauthorized) return;
+      document.getElementById("live-stamp").textContent = "No se pudo conectar con la base de datos. Recargá la página.";
+      throw e;
+    }
     renderInicio();
     populateDeptoSelect();
     setupInstSearch();
     populateDistritoSelect();
     renderInstGrid();
-    populateCodigoDatalist();
+    setupBuscador();
     document.getElementById("btn-volver-instituciones").addEventListener("click", () => {
       exitPersonMode();
     });

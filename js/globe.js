@@ -270,7 +270,7 @@ const ORBITS = [
     phase: 0,
     w: CORE_RADIUS * 0.867,
     h: CORE_RADIUS * 0.36,
-    texture: makeLabelTexture({ eyebrow: "Registro General", value: String(stats.total), color: "#27AE60" }),
+    texture: makeLabelTexture({ eyebrow: "Registro General", value: stats.total.toLocaleString("es-AR"), color: "#27AE60" }),
   },
   {
     radius: CORE_RADIUS * 1.567,
@@ -311,7 +311,7 @@ window.addEventListener("nexus:data-updated", async () => {
     orbiters[i].sprite.material.needsUpdate = true;
     if (old) old.dispose();
   };
-  upd(0, { eyebrow: "Registro General", value: String(st.total), color: "#27AE60" });
+  upd(0, { eyebrow: "Registro General", value: st.total.toLocaleString("es-AR"), color: "#27AE60" });
   upd(1, { eyebrow: "Registro B", value: st.pct + "%", color: "#EB5757" });
 });
 
