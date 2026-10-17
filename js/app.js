@@ -248,7 +248,7 @@
     function tick(now) {
       const t = Math.min(1, (now - start) / duration);
       const eased = 1 - Math.pow(1 - t, 3);
-      el.textContent = Math.round(eased * to);
+      el.textContent = fmtN(Math.round(eased * to));
       if (t < 1) requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
@@ -277,7 +277,57 @@
     setTimeout(() => {
       document.getElementById("donut-pct").textContent = pct.toFixed(1) + "%";
     }, 1150);
+
+    // Territorio: se cuenta sobre las instituciones cargadas
+    const deptos = new Map();
+    STATE.insts.forEach((i) => {
+      const key = i.depto || "Sin departamento";
+      if (!deptos.has(key)) deptos.set(key, { insts: 0, distritos: new Set(), general: 0, b: 0 });
+      const d = deptos.get(key);
+      d.insts++;
+      if (i.distrito) d.distritos.add(i.distrito);
+      d.general += i.personas || 0;
+      d.b += i.b || 0;
+    });
+    const totalDistritos = new Set(STATE.insts.filter((i) => i.distrito).map((i) => i.depto + "|" + i.distrito)).size;
+    animateCount(document.getElementById("stat-inst"), STATE.insts.length, 900);
+    animateCount(document.getElementById("stat-deptos"), deptos.size, 900);
+    animateCount(document.getElementById("stat-distritos"), totalDistritos, 900);
+
+    const max = Math.max(1, ...Array.from(deptos.values()).map((d) => d.general));
+    const tbody = document.getElementById("depto-tbody");
+    tbody.innerHTML = "";
+    Array.from(deptos.keys()).sort(byNumberedName).forEach((name) => {
+      const d = deptos.get(name);
+      const tr = document.createElement("tr");
+      tr.title = "Ver " + name + " en el mapa";
+      tr.innerHTML =
+        '<td><span class="depto-name"></span><span class="depto-bar">' +
+        '<i class="bg" style="width:' + ((d.general / max) * 100).toFixed(1) + '%"></i>' +
+        '<i class="bb" style="width:' + ((d.b / max) * 100).toFixed(1) + '%"></i></span></td>' +
+        '<td class="num">' + fmtN(d.insts) + "</td>" +
+        '<td class="num col-dist">' + fmtN(d.distritos.size) + "</td>" +
+        '<td class="num">' + fmtN(d.general) + "</td>" +
+        '<td class="num">' + fmtN(d.b) + "</td>";
+      tr.querySelector(".depto-name").textContent = name;
+      tr.addEventListener("click", () => gotoMapaDepto(name));
+      tbody.appendChild(tr);
+    });
   }
+
+  // Desde el Inicio: abre la pestaña Mapa (opcionalmente con un departamento elegido)
+  function gotoMapaDepto(depto) {
+    document.querySelector('.tab-btn[data-tab="mapa"]').click();
+    const sel = document.getElementById("sel-depto");
+    if (depto && Array.from(sel.options).some((o) => o.value === depto)) {
+      sel.value = depto;
+      sel.dispatchEvent(new Event("change"));
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  document.querySelectorAll("#tab-inicio [data-goto='mapa']").forEach((el) =>
+    el.addEventListener("click", () => gotoMapaDepto(""))
+  );
 
   // ---------------------------------------------------------------
   // Mapa: Departamento -> Distrito -> Instituciones -> Personas

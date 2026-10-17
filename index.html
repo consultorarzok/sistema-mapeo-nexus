@@ -61,7 +61,8 @@
       <canvas id="globe-canvas"></canvas>
     </div>
 
-    <div class="stat-grid">
+    <h2 class="inicio-sec">Personas</h2>
+    <div class="stat-grid stat-grid--personas">
       <div class="stat-card stat-card--general">
         <span class="stat-label">Registro General</span>
         <span class="stat-pct" id="stat-general-pct">100%</span>
@@ -73,17 +74,48 @@
         <span class="stat-pct" id="stat-b-pct">0%</span>
         <span class="stat-number" id="stat-b">0</span>
       </div>
+
+      <div class="stat-card stat-card--donut">
+        <svg viewBox="0 0 120 120" class="donut">
+          <circle cx="60" cy="60" r="50" fill="none" style="stroke:var(--border)" stroke-width="12"/>
+          <circle id="donut-arc" cx="60" cy="60" r="50" fill="none" style="stroke:var(--c-b)" stroke-width="12"
+            stroke-linecap="round" stroke-dasharray="0 314" transform="rotate(-90 60 60)"/>
+          <text x="60" y="60" text-anchor="middle" class="donut-label" id="donut-pct">0%</text>
+          <text x="60" y="76" text-anchor="middle" class="donut-sub">B sobre General</text>
+        </svg>
+      </div>
     </div>
 
-    <div class="donut-card">
-      <svg viewBox="0 0 120 120" class="donut">
-        <circle cx="60" cy="60" r="50" fill="none" style="stroke:var(--surface-2)" stroke-width="14"/>
-        <circle id="donut-arc" cx="60" cy="60" r="50" fill="none" style="stroke:var(--c-b)" stroke-width="14"
-          stroke-linecap="round" stroke-dasharray="0 314" transform="rotate(-90 60 60)"/>
-        <text x="60" y="56" text-anchor="middle" class="donut-label" id="donut-pct">0%</text>
-        <text x="60" y="72" text-anchor="middle" class="donut-sub">de B sobre General</text>
-      </svg>
+    <h2 class="inicio-sec">Territorio</h2>
+    <div class="stat-grid stat-grid--territorio">
+      <button type="button" class="stat-card stat-card--link" data-goto="mapa">
+        <span class="stat-label">Instituciones</span>
+        <span class="stat-number" id="stat-inst">0</span>
+      </button>
+      <button type="button" class="stat-card stat-card--link" data-goto="mapa">
+        <span class="stat-label">Departamentos</span>
+        <span class="stat-number" id="stat-deptos">0</span>
+      </button>
+      <button type="button" class="stat-card stat-card--link" data-goto="mapa">
+        <span class="stat-label">Distritos</span>
+        <span class="stat-number" id="stat-distritos">0</span>
+      </button>
     </div>
+
+    <h2 class="inicio-sec">Por departamento</h2>
+    <div class="depto-card">
+      <div class="depto-legend">
+        <span><span class="dot dot-general"></span> Registro General</span>
+        <span><span class="dot dot-b"></span> Registro B</span>
+      </div>
+      <table class="depto-table">
+        <thead>
+          <tr><th>Departamento</th><th class="num">Instit.</th><th class="num col-dist">Distritos</th><th class="num">General</th><th class="num">B</th></tr>
+        </thead>
+        <tbody id="depto-tbody"></tbody>
+      </table>
+    </div>
+
     <p class="live-stamp" id="live-stamp"></p>
 
     <div class="admin-sync">

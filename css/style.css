@@ -115,10 +115,30 @@ main{max-width:1100px;margin:0 auto;padding:2rem 1.5rem 4rem;}
 /* ---------- Inicio ---------- */
 main:has(#tab-inicio.active){padding-top:2rem;}
 .nexus-hero{
-  position:relative;width:100%;height:380px;max-width:600px;margin:0 auto 1.5rem;
+  position:relative;width:100%;height:260px;max-width:600px;margin:0 auto .5rem;
 }
 #globe-canvas{width:100%;height:100%;display:block;}
-.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;max-width:420px;margin:0 auto;}
+.inicio-sec{max-width:760px;margin:2rem auto .8rem;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.09em;font-size:.72rem;color:var(--muted);font-weight:600;}
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;max-width:760px;margin:0 auto;}
+.stat-card--donut{justify-content:center;padding:.5rem;}
+.stat-card--link{font:inherit;color:inherit;cursor:pointer;transition:border-color .15s,transform .15s;}
+.stat-card--link:hover{border-color:var(--accent);transform:translateY(-1px);}
+.stat-card--link:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.depto-card{max-width:760px;margin:0 auto;background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:1rem 1.1rem;}
+.depto-legend{display:flex;gap:1.2rem;font-size:.78rem;color:var(--muted);margin-bottom:.5rem;}
+.depto-legend span{display:inline-flex;align-items:center;gap:.35rem;}
+.depto-table{width:100%;border-collapse:collapse;font-size:.85rem;}
+.depto-table th{text-align:left;font-family:'JetBrains Mono',monospace;font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:.4rem .4rem;border-bottom:1px solid var(--border);}
+.depto-table td{padding:.45rem .4rem;border-bottom:1px solid var(--border);color:var(--ink);vertical-align:middle;}
+.depto-table tr:last-child td{border-bottom:none;}
+.depto-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.depto-name{display:block;font-weight:600;}
+.depto-bar{display:block;position:relative;height:5px;border-radius:3px;background:var(--border);margin-top:.3rem;overflow:hidden;}
+.depto-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;}
+.depto-bar .bg{background:var(--c-general);}
+.depto-bar .bb{background:var(--c-b);}
+.depto-table tbody tr{cursor:pointer;}
+.depto-table tbody tr:hover td{background:var(--surface-2);}
 .stat-card{
   position:relative;overflow:hidden;
   background:var(--surface);border:1px solid var(--border);border-radius:16px;
@@ -131,11 +151,10 @@ main:has(#tab-inicio.active){padding-top:2rem;}
 .stat-card--general .stat-pct{color:var(--c-general);}
 .stat-number{font-family:var(--font-brand);font-size:2.1rem;font-weight:700;color:var(--ink);line-height:1;margin-top:.1rem;}
 
-.donut-card{display:flex;justify-content:center;margin-top:2.2rem;}
-.donut{width:200px;height:200px;}
+.donut{width:104px;height:104px;}
 #donut-arc{transition:stroke-dasharray 1.1s cubic-bezier(.3,.9,.2,1);}
-.donut-label{font-family:var(--font-brand);font-size:1.4rem;font-weight:700;fill:var(--ink);}
-.donut-sub{font-family:'JetBrains Mono',monospace;font-size:.52rem;fill:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+.donut-label{font-family:var(--font-brand);font-size:1.25rem;font-weight:700;fill:var(--ink);}
+.donut-sub{font-family:'JetBrains Mono',monospace;font-size:.5rem;fill:var(--muted);}
 
 .dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none;}
 .dot-inst{background:var(--c-inst);}
@@ -308,9 +327,20 @@ main:has(#tab-inicio.active){padding-top:2rem;}
 }
 
 @media (max-width:640px){
-  .stat-grid{max-width:100%;}
+  .stat-grid{max-width:100%;gap:.6rem;}
+  .stat-grid--personas{grid-template-columns:1fr 1fr;}
+  .stat-grid--personas .stat-card--donut{grid-column:1 / -1;}
+  .stat-grid--territorio .stat-card{padding:.9rem .4rem;}
+  .stat-grid--territorio .stat-number{font-size:1.6rem;}
+  .stat-grid--territorio .stat-label{font-size:.72rem;}
+  .stat-number{font-size:1.7rem;}
+  .depto-card{padding:.8rem .6rem;}
+  .depto-table{font-size:.78rem;}
+  .depto-table th,.depto-table td{padding:.4rem .25rem;}
+  .depto-table .col-dist{display:none;}
+  .depto-name{font-size:.74rem;}
   main{padding:1.5rem 1rem 3rem;}
-  .nexus-hero{height:240px;}
+  .nexus-hero{height:200px;}
 }
 
 .inst-search{position:relative;margin-bottom:1rem;}
