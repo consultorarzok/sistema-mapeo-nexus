@@ -136,6 +136,7 @@
       cruzan: data.cruzan || 0,
       ubicadas: data.ubicadas || 0,
       ubicadas_b: data.ubicadas_b || 0,
+      aproximadas: data.aproximadas || 0,
     };
     STATE.peopleCache.clear();
     // globe.js solo necesita las cantidades
@@ -640,6 +641,7 @@
       "<small>" + escapeHtml(cleanName(p.Departamento) + " · " + cleanName(p.Distrito)) + "</small><br>" +
       escapeHtml(p.Direccion + " " + p.Numero) + "<br>" +
       "<i>" + escapeHtml(p.Institucion) + "</i>" +
+      (p._aprox ? '<br><small class="aprox-note">📍 Ubicación aproximada (cerca de la institución)</small>' : "") +
       '<div class="popup-actions">' +
       '<button class="btn btn-secondary popup-btn-buscar" data-row="' + p.row_number + '">🔍 Buscar</button>' +
       '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' + googleSearchUrl(p) + '">Google</a>' +
@@ -672,6 +674,7 @@
       p.Direccion +
       " " +
       p.Numero +
+      (p._aprox ? ' <small class="aprox-note">(en el mapa: ubicación aproximada)</small>' : "") +
       "</div>" +
       "<div><b>Orden</b>" +
       p.Orden +
@@ -795,8 +798,9 @@
       if (lat == null || lng == null) continue;
       ubicadas++;
       bounds.push([lat, lng]);
-      if (hasInst) maxDist = Math.max(maxDist, haversineMeters(inst.lat, inst.lng, lat, lng));
-      const marker = new google.maps.Marker({ position: { lat, lng }, map, icon: coloredIcon(color) });
+      // las aproximadas rodean la institución: no definen el rango de alcance
+      if (hasInst && !p._aprox) maxDist = Math.max(maxDist, haversineMeters(inst.lat, inst.lng, lat, lng));
+      const marker = new google.maps.Marker({ position: { lat, lng }, map, icon: coloredIcon(color), opacity: p._aprox ? 0.45 : 1 });
       marker.addListener("click", () => {
         STATE.infoWindow.setContent(popupHtml(p));
         STATE.infoWindow.open({ anchor: marker, map });
@@ -805,7 +809,7 @@
       STATE.personMarkers.push(marker);
     }
 
-    if (hasInst && ubicadas) {
+    if (hasInst && maxDist > 0) {
       const radius = Math.min(6000, Math.max(300, maxDist * 1.25));
       STATE.reachCircles.push(
         new google.maps.Circle({
@@ -822,8 +826,11 @@
     }
 
     const faltan = people.length - ubicadas;
+    const aprox = people.filter((p) => p._aprox).length;
     document.getElementById("map-note").textContent =
-      "Tocá un punto para ver a la persona" + (faltan > 0 ? " · " + fmtN(faltan) + " sin ubicar todavía" : "");
+      "Tocá un punto para ver a la persona" +
+      (aprox > 0 ? " · " + fmtN(aprox) + " con ubicación aproximada (puntos claros)" : "") +
+      (faltan > 0 ? " · " + fmtN(faltan) + " sin ubicar todavía" : "");
     fitToBounds(map, bounds);
   }
 
@@ -986,7 +993,9 @@
       '<div class="osm-popup"><b>' + escapeHtml(it.n) + "</b>" +
       '<div class="osm-sub">' + escapeHtml(it.c || "") + " · Orden " + escapeHtml(it.o) + "<br>" +
       escapeHtml(it.d) + "<br>" +
-      escapeHtml(it.i || "") + "</div>" + tag +
+      escapeHtml(it.i || "") +
+      (it.a ? '<br><span class="aprox-note">📍 Ubicación aproximada (cerca de la institución)</span>' : "") +
+      "</div>" + tag +
       '<button type="button" class="osm-btn-buscar">🔍 Buscar en el sistema</button></div>'
     );
   }
@@ -1013,6 +1022,7 @@
   function osmStatus(msg) {
     const t = STATE.totals;
     let s = msg;
+    if (t.aproximadas) s += " · " + fmtN(t.aproximadas) + " con ubicación aproximada";
     if (t.general > t.ubicadas) s += " · " + fmtN(t.general - t.ubicadas) + " personas todavía sin ubicar";
     const sinInst = STATE.insts.filter((i) => i.lat == null).length;
     if (sinInst) s += " · " + sinInst + " instituciones sin ubicar";
@@ -1096,9 +1106,10 @@
       osmSpread(items);
       items.forEach((it) => {
         const mk = (color, layer, radius) => {
-          const m = L.circleMarker([it.dLat, it.dLng], {
-            radius, color: "#fff", weight: 1.5, fillColor: color, fillOpacity: 0.95,
-          }).addTo(layer);
+          const m = L.circleMarker([it.dLat, it.dLng], it.a
+            ? { radius, color, weight: 1.5, dashArray: "2 3", fillColor: color, fillOpacity: 0.35 }
+            : { radius, color: "#fff", weight: 1.5, fillColor: color, fillOpacity: 0.95 }
+          ).addTo(layer);
           m.bindPopup(osmPopupHtml(it));
           m.on("popupopen", (e) => {
             const btn = e.popup.getElement().querySelector(".osm-btn-buscar");
