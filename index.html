@@ -44,13 +44,14 @@
     <button class="tab-btn" data-tab="osm" role="tab">Mapa general</button>
     <button class="tab-btn" data-tab="buscador" role="tab">Buscador por código</button>
   </nav>
-  <span class="demo-tag">Datos en vivo</span>
+  <span class="demo-tag" id="live-tag">Datos en vivo</span>
   <button id="logout-btn" class="btn btn-secondary logout-btn" title="Cerrar sesión">Salir</button>
   <button id="theme-toggle" class="theme-toggle" aria-label="Cambiar tema" title="Modo claro / oscuro">
     <svg class="icon-sun" viewBox="0 0 24 24" width="17" height="17" fill="none"><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.7"/><path d="M12 2.5v2.4M12 19.1v2.4M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
     <svg class="icon-moon" viewBox="0 0 24 24" width="17" height="17" fill="none"><path d="M20 14.2A8.3 8.3 0 1 1 9.8 4a6.6 6.6 0 0 0 10.2 10.2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
   </button>
 </header>
+<div id="sync-alert" class="sync-alert" role="status" hidden></div>
 
 <main>
 
@@ -84,6 +85,16 @@
       </svg>
     </div>
     <p class="live-stamp" id="live-stamp"></p>
+
+    <div class="admin-sync">
+      <button type="button" id="admin-sync-open" class="btn btn-secondary">Actualizar desde la planilla</button>
+      <form id="admin-sync-form" class="admin-sync-form" hidden>
+        <label for="admin-sync-clave">Clave de administrador</label>
+        <input id="admin-sync-clave" type="password" autocomplete="off" required />
+        <button type="submit" class="btn">Actualizar ahora</button>
+      </form>
+      <p id="admin-sync-msg" class="admin-sync-msg" role="status"></p>
+    </div>
   </section>
 
   <!-- ===================== MAPA ===================== -->
@@ -122,10 +133,11 @@
       <div class="mapa-mapside">
         <div id="map-wrap" class="map-wrap">
           <div class="map-head">
-            <div class="map-legend">
-              <span class="dot dot-inst"></span> Instituciones
-              <span class="dot dot-general" style="margin-left:1rem;"></span> Planilla General
-              <span class="dot dot-b" style="margin-left:1rem;"></span> Planilla B
+            <div class="map-toggles">
+              <label class="osm-toggle"><input type="checkbox" id="gm-chk-inst" checked><span class="dot dot-inst"></span> Instituciones</label>
+              <label class="osm-toggle gm-pers"><input type="checkbox" id="gm-chk-general" checked disabled><span class="dot dot-general"></span> Planilla General <b id="gm-count-general"></b></label>
+              <label class="osm-toggle gm-pers"><input type="checkbox" id="gm-chk-b" checked disabled><span class="dot dot-b"></span> Planilla B <b id="gm-count-b"></b></label>
+              <label class="osm-toggle gm-pers"><input type="checkbox" id="gm-chk-reach" checked disabled><span class="osm-ring"></span> Rango de alcance</label>
             </div>
             <div class="map-note" id="map-note">Tocá una institución para ver sus datos</div>
           </div>

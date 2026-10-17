@@ -28,12 +28,20 @@
     } catch (e) {}
   }
 
+  // Si la base está ocupada (ej. mientras se actualiza desde la planilla) puede cortar una consulta
+  // por tiempo (5xx): se reintenta hasta 2 veces antes de mostrar error. Todas las funciones son
+  // seguras de repetir (lecturas, o escrituras que dejan el mismo resultado).
   async function rawRpc(fn, args) {
-    const res = await fetch(SB_URL + "/rest/v1/rpc/" + fn, {
-      method: "POST",
-      headers: { apikey: SB_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify(args),
-    });
+    let res;
+    for (let intento = 0; ; intento++) {
+      res = await fetch(SB_URL + "/rest/v1/rpc/" + fn, {
+        method: "POST",
+        headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify(args),
+      });
+      if (res.status < 500 || intento >= 2) break;
+      await new Promise((r) => setTimeout(r, 1500 * (intento + 1)));
+    }
     if (res.status === 401) {
       const e = new Error("Sesión vencida");
       e.unauthorized = true;

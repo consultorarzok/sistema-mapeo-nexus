@@ -127,6 +127,20 @@
     window.dispatchEvent(new CustomEvent("nexus:data-ready"));
   }
 
+  // Sincronización automática con la planilla (n8n): hora de la última y aviso si quedó frenada
+  function showSyncStatus(data) {
+    const tag = document.getElementById("live-tag");
+    if (tag && data.sync_at) {
+      tag.title = "Última sincronización con la planilla: " + new Date(data.sync_at).toLocaleString("es-AR");
+    }
+    const box = document.getElementById("sync-alert");
+    if (!box) return;
+    box.hidden = !data.sync_error;
+    box.textContent = data.sync_error
+      ? "⚠️ La actualización desde la planilla está frenada: " + data.sync_error
+      : "";
+  }
+
   function applyData(data) {
     STATE.insts = data.instituciones || [];
     STATE.version = data.version;
@@ -139,6 +153,7 @@
       aproximadas: data.aproximadas || 0,
     };
     STATE.peopleCache.clear();
+    showSyncStatus(data);
     // globe.js solo necesita las cantidades
     window.NexusData = { general: { length: STATE.totals.general }, registroB: { length: STATE.totals.b } };
   }
@@ -500,42 +515,20 @@
     hideSelectedPersonCard();
   }
 
-  const CHIPS_MAX = 300;
-
   function renderInstDetail(inst, people) {
     const detail = document.getElementById("inst-detail");
     detail.hidden = false;
-    const chips = people.slice(0, CHIPS_MAX);
     detail.innerHTML =
       "<h3>" + escapeHtml(inst.nombre) + "</h3>" +
       '<div class="inst-fields">' +
       "<div><b>Dirección</b>" + escapeHtml(inst.dir || "—") + "</div>" +
       "<div><b>Ubicación</b>" + escapeHtml(cleanName(inst.depto)) + " · " + escapeHtml(cleanName(inst.distrito || "")) + "</div>" +
-      "<div><b>Personas cargadas</b>" + fmtN(inst.personas) + "</div>" +
+      "<div><b>Personas cargadas</b>" + fmtN(people.length) + " · " + fmtN(people.filter((p) => p._enB).length) + " en Planilla B</div>" +
       "</div>" +
       '<div class="result-links">' +
       '<a class="btn btn-maps" target="_blank" rel="noopener" href="' + googleMapsUrlInstitucion(inst) + '">Cómo llegar</a>' +
       "</div>" +
-      '<div class="point-list">' +
-      chips
-        .map(
-          (p) =>
-            '<span class="point-chip"><span class="codigo-mono">' + escapeHtml(p.Codigo) + "</span> · " +
-            escapeHtml(p.Apellido + " " + p.Nombre) + " · Orden " + escapeHtml(p.Orden) + "</span>"
-        )
-        .join("") +
-      (people.length > CHIPS_MAX
-        ? '<span class="point-chip">… y ' + fmtN(people.length - CHIPS_MAX) + " más (usá el Buscador para encontrar a una persona)</span>"
-        : "") +
-      "</div>" +
-      '<p class="planilla-auto-note">Mostrando Planilla General (' + fmtN(people.length) + ") en el mapa — tocá Planilla B para ver esos en cambio.</p>" +
-      '<div class="planilla-btns">' +
-      '<button class="btn btn-b" id="btn-planilla-b">Planilla B (' + fmtN(people.filter((p) => p._enB).length) + ")</button>" +
-      "</div>";
-
-    document.getElementById("btn-planilla-b").addEventListener("click", () => {
-      showPersonMarkers(inst, people.filter((p) => p._enB), "b");
-    });
+      '<p class="planilla-auto-note">Sus personas están en el mapa: con las casillas de arriba del mapa elegís Planilla General, Planilla B y el rango de alcance. Para buscar a alguien, usá el Buscador.</p>';
   }
 
   async function loadPeople(inst) {
@@ -734,7 +727,7 @@
       bounds.push([inst.lat, inst.lng]);
       const marker = new google.maps.Marker({
         position: { lat: inst.lat, lng: inst.lng },
-        map,
+        map: gmChk("inst").checked ? map : null,
         icon: coloredIcon("#2D6CDF"),
       });
       marker.addListener("click", () => {
@@ -756,6 +749,8 @@
   // Modo "instituciones" (azul) — siempre visible, se recalcula con el filtro de depto/distrito
   function renderInstitutionMarkers() {
     STATE.mapMode = "instituciones";
+    STATE.focus = null;
+    setPersonToggles(false);
     document.getElementById("btn-volver-instituciones").hidden = true;
     hideSelectedPersonCard();
 
@@ -769,15 +764,41 @@
     fitToBounds(map, bounds);
   }
 
-  // Al elegir una institución: las demás se ocultan y se muestra su Planilla General en el mapa.
+  // Al elegir una institución: las demás se ocultan y aparecen los puntos de sus personas.
   function focusInstitutionOnMap(inst, people) {
+    STATE.focus = { inst, people };
     populateInstitutionLayer(inst);
-    showPersonMarkers(inst, people, "general");
+    setPersonToggles(true);
+    drawFocusPersons(true);
   }
 
-  // Modo "personas" (verde=Planilla General / rojo=Planilla B) — el punto azul de
-  // la institución queda visible y se agrega un círculo de "radio de alcance".
-  function showPersonMarkers(inst, people, kind) {
+  // Casillas del mapa (igual que en Mapa general). Las de personas se habilitan al elegir una institución.
+  const gmChk = (k) => document.getElementById("gm-chk-" + k);
+
+  function setPersonToggles(enabled) {
+    ["general", "b", "reach"].forEach((k) => (gmChk(k).disabled = !enabled));
+    document.querySelectorAll(".gm-pers").forEach((l) => l.classList.toggle("is-disabled", !enabled));
+    const f = STATE.focus;
+    document.getElementById("gm-count-general").textContent = enabled && f ? fmtN(f.people.length) : "";
+    document.getElementById("gm-count-b").textContent = enabled && f ? fmtN(f.people.filter((p) => p._enB).length) : "";
+  }
+
+  function setupMapToggles() {
+    gmChk("inst").addEventListener("change", () => {
+      const on = gmChk("inst").checked;
+      STATE.institutionMarkers.forEach((m) => m.setMap(on ? STATE.map : null));
+    });
+    ["general", "b"].forEach((k) => gmChk(k).addEventListener("change", () => STATE.focus && drawFocusPersons(false)));
+    gmChk("reach").addEventListener("change", () => {
+      const on = gmChk("reach").checked;
+      STATE.reachCircles.forEach((c) => c.setMap(on ? STATE.map : null));
+    });
+  }
+
+  // Personas de la institución elegida: verde = Planilla General, rojo = está en Planilla B
+  // (con las dos casillas, las de B se ven en rojo). Se suma el círculo de rango de alcance.
+  function drawFocusPersons(fit) {
+    const { inst, people } = STATE.focus;
     STATE.mapMode = "personas";
     document.getElementById("btn-volver-instituciones").hidden = false;
     hideSelectedPersonCard();
@@ -787,20 +808,23 @@
     clearMarkers(STATE.reachCircles);
     setTimeout(() => google.maps.event.trigger(map, "resize"), 50);
 
-    const color = kind === "b" ? "#EB5757" : "#27AE60";
+    const wantG = gmChk("general").checked, wantB = gmChk("b").checked;
     const hasInst = inst.lat != null && inst.lng != null;
     const bounds = [];
     if (hasInst) bounds.push([inst.lat, inst.lng]);
     let maxDist = 0;
-    let ubicadas = 0;
+    let ubicadas = 0, visibles = 0;
     for (const p of people) {
       const lat = p.Latitud, lng = p.Longitud;
       if (lat == null || lng == null) continue;
       ubicadas++;
-      bounds.push([lat, lng]);
       // las aproximadas rodean la institución: no definen el rango de alcance
       if (hasInst && !p._aprox) maxDist = Math.max(maxDist, haversineMeters(inst.lat, inst.lng, lat, lng));
-      const marker = new google.maps.Marker({ position: { lat, lng }, map, icon: coloredIcon(color), opacity: p._aprox ? 0.45 : 1 });
+      const color = wantB && p._enB ? "#EB5757" : wantG ? "#27AE60" : null;
+      if (!color) continue;
+      visibles++;
+      bounds.push([lat, lng]);
+      const marker = new google.maps.Marker({ position: { lat, lng }, map, icon: coloredIcon(color), opacity: p._aprox ? 0.45 : 1, zIndex: color === "#EB5757" ? 2 : 1 });
       marker.addListener("click", () => {
         STATE.infoWindow.setContent(popupHtml(p));
         STATE.infoWindow.open({ anchor: marker, map });
@@ -820,7 +844,7 @@
           strokeOpacity: 0.7,
           fillColor: "#2D6CDF",
           fillOpacity: 0.07,
-          map,
+          map: gmChk("reach").checked ? map : null,
         })
       );
     }
@@ -828,15 +852,17 @@
     const faltan = people.length - ubicadas;
     const aprox = people.filter((p) => p._aprox).length;
     document.getElementById("map-note").textContent =
-      "Tocá un punto para ver a la persona" +
+      (visibles ? "Tocá un punto para ver a la persona" : "Tildá Planilla General o Planilla B para ver sus personas") +
       (aprox > 0 ? " · " + fmtN(aprox) + " con ubicación aproximada (puntos claros)" : "") +
       (faltan > 0 ? " · " + fmtN(faltan) + " sin ubicar todavía" : "");
-    fitToBounds(map, bounds);
+    if (fit) fitToBounds(map, bounds);
   }
 
   // Vuelve a mostrar todas las instituciones y saca los puntos verdes/rojos + el círculo de alcance.
   function exitPersonMode() {
     STATE.mapMode = "instituciones";
+    STATE.focus = null;
+    setPersonToggles(false);
     clearMarkers(STATE.personMarkers);
     clearMarkers(STATE.reachCircles);
     document.getElementById("btn-volver-instituciones").hidden = true;
@@ -1188,6 +1214,54 @@
   }
 
   // ---------------------------------------------------------------
+  // Actualización manual desde la planilla (solo con clave de administrador).
+  // La clave la valida la base (nx_sync_pedir); recién ahí se avisa a n8n, que sin
+  // un pedido válido no hace nada. Al terminar, el sitio se refresca solo.
+  // ---------------------------------------------------------------
+  const SYNC_WEBHOOK = "https://n8n.consultorarz.com/webhook/nexus-sync-ahora";
+
+  function setupAdminSync() {
+    const openBtn = document.getElementById("admin-sync-open");
+    const form = document.getElementById("admin-sync-form");
+    const input = document.getElementById("admin-sync-clave");
+    const msg = document.getElementById("admin-sync-msg");
+    if (!openBtn || !form) return;
+    openBtn.addEventListener("click", () => {
+      form.hidden = !form.hidden;
+      msg.textContent = "";
+      if (!form.hidden) input.focus();
+    });
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = form.querySelector("button[type=submit]");
+      btn.disabled = true;
+      msg.textContent = "Verificando…";
+      try {
+        const r = await window.NexusAuth.rpc("nx_sync_pedir", { p_clave: input.value });
+        if (!r || !r.ok) {
+          msg.textContent = (r && r.error) || "No se pudo pedir la actualización.";
+          return;
+        }
+        input.value = "";
+        if (r.en_curso) {
+          msg.textContent = "Ya hay una actualización en curso. El sistema se refresca solo cuando termina.";
+          form.hidden = true;
+          return;
+        }
+        // no-cors + text/plain: pedido simple, sin consulta previa; solo falla si no hay red
+        await fetch(SYNC_WEBHOOK, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain" }, body: "{}" });
+        msg.textContent = "Listo: se está leyendo la planilla. Tarda unos 8 minutos y el sistema se actualiza solo, no hace falta recargar.";
+        form.hidden = true;
+      } catch (e) {
+        if (e && e.unauthorized) return;
+        msg.textContent = "No se pudo avisar al servidor. Probá de nuevo en un rato.";
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------
   async function init() {
@@ -1205,6 +1279,8 @@
     populateDistritoSelect();
     renderInstGrid();
     setupBuscador();
+    setupAdminSync();
+    setupMapToggles();
     document.getElementById("btn-volver-instituciones").addEventListener("click", () => {
       exitPersonMode();
     });
