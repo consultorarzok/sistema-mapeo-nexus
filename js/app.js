@@ -1118,7 +1118,13 @@
         p_s: b.getSouth(), p_w: b.getWest(), p_n: b.getNorth(), p_e: b.getEast(), p_cell: cell, p_solo_b: !wantG && wantB,
       });
     } catch (e) {
-      osmStatus("No se pudo cargar el mapa");
+      if (e && e.unauthorized) return;
+      // base ocupada (ej. actualizándose desde la planilla): se reintenta solo, sin que el usuario haga nada
+      if (my === OSM.seq) {
+        osmStatus("La base está ocupada (puede estar actualizándose desde la planilla) · reintentando…");
+        clearTimeout(OSM.timer);
+        OSM.timer = setTimeout(loadOsmPoints, 6000);
+      }
       return;
     }
     if (my !== OSM.seq) return;
