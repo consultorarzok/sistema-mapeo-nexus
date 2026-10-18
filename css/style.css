@@ -189,7 +189,14 @@ input[type="checkbox"]{accent-color:var(--accent);width:1rem;height:1rem;margin:
   .demo-tag{display:none;}
   .tabs{order:4;flex-basis:100%;flex-wrap:nowrap;overflow-x:auto;gap:.15rem;margin:0 -1rem;padding:0 1rem .5rem;scrollbar-width:none;}
   .tabs::-webkit-scrollbar{display:none;}
-  .tab-btn{white-space:nowrap;flex:none;padding:.5rem .75rem;font-size:.85rem;}
+  .tab-btn{white-space:nowrap;flex:none;padding:.5rem .5rem;font-size:.8rem;}
+}
+@media (max-width:374px){
+  .topbar{column-gap:.45rem;}
+  .brand{font-size:.8rem;gap:.45rem;}
+  .logout-btn{padding:.4rem .7rem;}
+  /* no entran las 4: desvanecido a la derecha para que se note que se desliza */
+  .tabs{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 2.5rem),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 2.5rem),transparent);}
 }
 
 main{max-width:1120px;margin:0 auto;padding:2.75rem 1.5rem 4rem;}
