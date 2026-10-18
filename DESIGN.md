@@ -1,25 +1,23 @@
-# Sistema de Mapeo Nexus: diseño "Quebrada"
+# Sistema de Mapeo Nexus: diseño "Retícula"
 
-Referencia: los estratos del Cerro de los Siete Colores y la guarda de un aguayo. Uso interno de equipos de campo en Jujuy.
-Versión anterior ("Carta topográfica", papel gris verdoso y tinta azul petróleo): tag git `version-carta-topografica`.
+Cartografía digital universal y tecnológica. Versiones anteriores en tags de git: `version-quebrada` (ciruela/Jujuy), `version-carta-topografica` (azul petróleo), `backup-pre-diseno-20261018` (original con globo).
 
-## Fondos
-- `assets/strata.svg` / `assets/strata-dark.svg`: estratos inclinados en tonos minerales. Ocupan la parte de arriba de cada pestaña (`#app-shell::before`, se desvanecen hacia abajo) y toda la pantalla de ingreso.
-- `assets/aguayo.svg`: guarda tejida (rombos escalonados en ciruela, ocre, rosa y salvia), como franja de 6px bajo la barra superior.
+## Fondos y movimiento
+- `assets/reticula.svg` / `assets/reticula-dark.svg`: meridianos y paralelos de un globo en proyección ortográfica, 16 nodos que laten y 10 rutas (arcos de círculo máximo) que se dibujan en secuencia. La animación vive dentro del SVG y se apaga con `prefers-reduced-motion`.
+- Arriba de cada pestaña (`#app-shell::before`, se desvanece hacia abajo; al 50% en celular) y a pantalla completa en el ingreso.
+- Malla de puntos de 22px en todo el fondo de la aplicación.
+- Ingreso: barrido de radar (haz cónico con anillos) que gira detrás del formulario, cada 7 s.
+- Barra superior: una señal aguamarina recorre el borde inferior cada 6 s.
 
 ## Colores (tokens en `css/style.css`, claro / oscuro)
-- `--paper` #F4F1F6 / #15111C · `--surface` #FFFFFF / #1E1828 · `--surface-2` #F7F3F8 / #251E31
-- `--ink` #24192F / #EEE8F3 · `--muted` #5B5069 / #ADA3BA · `--border` #E0D7E6 / #382D46
-- `--accent` ciruela #6A2C5F / #DDA3CF: pestaña activa, botones principales, foco
-- Datos (iguales en los dos temas; los mapas los leen con `cssVar`): `--c-general` #1E8A4F, `--c-b` #D2423A, `--c-inst` #2F5FD0. Para texto: `--t-general`, `--t-b`, `--t-inst`
+- `--paper` #F3F5FB / #0A0F24 · `--surface` #FFFFFF / #111936 · `--ink` #10152E / #E8EBFA · `--muted` #4F5775 / #A3AACB
+- `--accent` violeta eléctrico #5B3DF5 / #9C90FF: pestaña activa, botones, foco
+- `--signal` aguamarina #13B9A6 / #2EE6C8: rutas, radar, indicador de datos en vivo
+- Datos (iguales en ambos temas; los mapas los leen con `cssVar`): `--c-general` #1E8A4F, `--c-b` #D2423A, `--c-inst` #2F6FE0
 
 ## Tipografía
-- Unbounded (500 a 700): títulos, cifras grandes y el nombre "Nexus".
-- Figtree (400 a 700): todo el resto de la interfaz.
-- JetBrains Mono: solo los chips de código de persona.
+- Sora (500 a 700): títulos, cifras y "Nexus". IBM Plex Sans: interfaz. IBM Plex Mono: chips de código.
 
 ## Reglas
-- Las cifras de Inicio van en una sola lámina dividida por líneas finas, no en tarjetas sueltas.
-- Radios: 14px para láminas, 10px para controles, pestañas en forma de píldora.
-- Movimiento: solo transiciones de estado (150 a 250 ms). Se respeta `prefers-reduced-motion`.
-- Inicio arranca directo con las cifras (el globo 3D se sacó el 18/10; queda en el historial de git).
+- Cifras de Inicio en una sola lámina dividida por líneas finas. Radios 14px láminas / 10px controles; pestañas en píldora.
+- Movimiento solo en el fondo, el radar y la señal de la barra; los controles usan transiciones de estado de 150 a 250 ms.

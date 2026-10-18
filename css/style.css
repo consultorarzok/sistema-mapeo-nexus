@@ -1,60 +1,62 @@
-/* Sistema de Mapeo Nexus — "Quebrada"
-   Colores minerales del Cerro de los Siete Colores (ciruela, ocre, rosa, salvia) y la guarda de un aguayo.
-   Fondo: estratos inclinados arriba de cada pantalla (assets/strata*.svg) y guarda tejida bajo la barra (assets/aguayo.svg).
+/* Sistema de Mapeo Nexus — "Retícula"
+   Cartografía digital: retícula de meridianos y paralelos con nodos que laten y rutas que se dibujan
+   (assets/reticula*.svg, animación dentro del SVG), malla de puntos de fondo, barrido de radar en el ingreso.
    Verde = Registro General, rojo = Registro B, azul = instituciones (los mapas leen estos tokens). */
 :root{
-  --font-sans:'Figtree', system-ui, sans-serif;
-  --font-brand:'Unbounded', 'Figtree', system-ui, sans-serif;
-  --font-mono:'JetBrains Mono', ui-monospace, monospace;
-  --wide:100%;
+  --font-sans:'IBM Plex Sans', system-ui, sans-serif;
+  --font-brand:'Sora', 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono:'IBM Plex Mono', ui-monospace, monospace;
 
-  --paper:#F4F1F6;
+  --paper:#F3F5FB;
   --surface:#FFFFFF;
-  --surface-2:#F7F3F8;
-  --ink:#24192F;
-  --muted:#5B5069;
-  --border:#E0D7E6;
-  --rule:#EEE8F1;
-  --accent:#6A2C5F;
-  --accent-hover:#561F4C;
+  --surface-2:#F5F6FC;
+  --ink:#10152E;
+  --muted:#4F5775;
+  --border:#DCE0EE;
+  --rule:#ECEEF6;
+  --accent:#5B3DF5;
+  --accent-hover:#4A2EE0;
   --accent-ink:#FFFFFF;
-  --accent-soft:rgba(106,44,95,.09);
+  --accent-soft:rgba(91,61,245,.09);
+  --signal:#13B9A6;
+  --signal-soft:rgba(19,185,166,.22);
+  --grid-dot:rgba(72,61,214,.10);
   --ochre:#8A5A0A;
   --ochre-soft:#FBF0D9;
   --ochre-line:#EBCB8B;
-  --strata:url("../assets/strata.svg");
+  --map-bg:url("../assets/reticula.svg");
 
-  --c-inst:#2F5FD0;
+  --c-inst:#2F6FE0;
   --c-point:#D9822B;
   --c-general:#1E8A4F;
   --c-b:#D2423A;
   --t-general:#17703F;
   --t-b:#B5332C;
-  --t-inst:#2A54BA;
+  --t-inst:#2A5BC4;
 
   --radius:14px;
   --radius-sm:10px;
-  --shadow:0 1px 2px rgba(52,22,58,.05), 0 14px 32px -20px rgba(52,22,58,.32);
+  --shadow:0 1px 2px rgba(16,21,46,.05), 0 16px 34px -22px rgba(40,30,120,.35);
   --ring:0 0 0 3px var(--accent-soft);
   color-scheme:light;
 }
 
 :root:not([data-theme="light"]){
-  --paper:#15111C; --surface:#1E1828; --surface-2:#251E31; --ink:#EEE8F3; --muted:#ADA3BA;
-  --border:#382D46; --rule:#2A2236; --accent:#DDA3CF; --accent-hover:#EBBDE0; --accent-ink:#2A0F25;
-  --accent-soft:rgba(221,163,207,.15);
-  --ochre:#E8BC62; --ochre-soft:#2E2414; --ochre-line:#5C4A22; --strata:url("../assets/strata-dark.svg");
-  --t-general:#52C98A; --t-b:#FF8077; --t-inst:#8DABF5;
-  --shadow:0 1px 2px rgba(0,0,0,.3), 0 16px 32px -18px rgba(0,0,0,.75);
+  --paper:#0A0F24; --surface:#111936; --surface-2:#172043; --ink:#E8EBFA; --muted:#A3AACB;
+  --border:#263160; --rule:#1C2650; --accent:#9C90FF; --accent-hover:#B4AAFF; --accent-ink:#120B3D;
+  --accent-soft:rgba(156,144,255,.16); --signal:#2EE6C8; --signal-soft:rgba(46,230,200,.20); --grid-dot:rgba(143,133,255,.12);
+  --ochre:#E8BC62; --ochre-soft:#2E2414; --ochre-line:#5C4A22; --map-bg:url("../assets/reticula-dark.svg");
+  --t-general:#52C98A; --t-b:#FF8077; --t-inst:#8DB0F7;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 18px 36px -20px rgba(0,0,0,.8);
   color-scheme:dark;
 }
 :root[data-theme="dark"]{
-  --paper:#15111C; --surface:#1E1828; --surface-2:#251E31; --ink:#EEE8F3; --muted:#ADA3BA;
-  --border:#382D46; --rule:#2A2236; --accent:#DDA3CF; --accent-hover:#EBBDE0; --accent-ink:#2A0F25;
-  --accent-soft:rgba(221,163,207,.15);
-  --ochre:#E8BC62; --ochre-soft:#2E2414; --ochre-line:#5C4A22; --strata:url("../assets/strata-dark.svg");
-  --t-general:#52C98A; --t-b:#FF8077; --t-inst:#8DABF5;
-  --shadow:0 1px 2px rgba(0,0,0,.3), 0 16px 32px -18px rgba(0,0,0,.75);
+  --paper:#0A0F24; --surface:#111936; --surface-2:#172043; --ink:#E8EBFA; --muted:#A3AACB;
+  --border:#263160; --rule:#1C2650; --accent:#9C90FF; --accent-hover:#B4AAFF; --accent-ink:#120B3D;
+  --accent-soft:rgba(156,144,255,.16); --signal:#2EE6C8; --signal-soft:rgba(46,230,200,.20); --grid-dot:rgba(143,133,255,.12);
+  --ochre:#E8BC62; --ochre-soft:#2E2414; --ochre-line:#5C4A22; --map-bg:url("../assets/reticula-dark.svg");
+  --t-general:#52C98A; --t-b:#FF8077; --t-inst:#8DB0F7;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 18px 36px -20px rgba(0,0,0,.8);
   color-scheme:dark;
 }
 
@@ -71,27 +73,44 @@ body{
   caret-color:var(--accent);transition:background .2s ease,color .2s ease;
 }
 ::selection{background:var(--accent);color:var(--accent-ink);}
-h1,h2,h3,h4{font-family:var(--font-brand);font-weight:600;margin:0;letter-spacing:-.02em;line-height:1.2;text-wrap:balance;}
+h1,h2,h3,h4{font-family:var(--font-brand);font-weight:600;margin:0;letter-spacing:-.025em;line-height:1.2;text-wrap:balance;}
 button,select,input,textarea{font-family:inherit;}
 a{color:var(--accent);text-underline-offset:.2em;}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 input[type="checkbox"]{accent-color:var(--accent);width:1rem;height:1rem;margin:0;}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
 
-/* Estratos de la quebrada: fondo de la pantalla de ingreso y franja superior de cada pestaña */
+/* Fondo cartográfico: retícula animada arriba, malla de puntos en toda la página */
 .login-screen::before,
 #app-shell::before{
   content:"";position:absolute;inset:0;pointer-events:none;z-index:-1;
-  background:var(--strata) center 30% / cover no-repeat;
-  -webkit-mask:radial-gradient(ellipse 90% 70% at 50% 45%, #000 45%, transparent 100%);
-          mask:radial-gradient(ellipse 90% 70% at 50% 45%, #000 45%, transparent 100%);
+  background:var(--map-bg) center 35% / cover no-repeat;
 }
-#app-shell{position:relative;isolation:isolate;min-height:100vh;}
+#app-shell{
+  position:relative;isolation:isolate;min-height:100vh;
+  background-image:radial-gradient(var(--grid-dot) 1.2px, transparent 1.3px);
+  background-size:22px 22px;background-position:11px 11px;
+}
 #app-shell::before{
-  bottom:auto;height:440px;background-position:center top;background-size:max(1600px,100%) 440px;
-  -webkit-mask:linear-gradient(#000 0%, rgba(0,0,0,.75) 45%, transparent 100%);
-          mask:linear-gradient(#000 0%, rgba(0,0,0,.75) 45%, transparent 100%);
+  bottom:auto;height:480px;background-position:center top;background-size:max(1600px,100%) 480px;
+  -webkit-mask:linear-gradient(#000 0%, rgba(0,0,0,.8) 50%, transparent 100%);
+          mask:linear-gradient(#000 0%, rgba(0,0,0,.8) 50%, transparent 100%);
 }
+/* Barrido de radar detrás del formulario de ingreso */
+.login-screen::after{
+  content:"";position:absolute;z-index:-1;pointer-events:none;
+  width:min(1100px,160vw);aspect-ratio:1;left:50%;top:50%;margin:calc(min(1100px,160vw) / -2) 0 0 calc(min(1100px,160vw) / -2);
+  border-radius:50%;
+  background:
+    conic-gradient(from 0deg, transparent 0deg 318deg, var(--signal-soft) 358deg, var(--signal) 359.4deg, transparent 360deg),
+    repeating-radial-gradient(circle, transparent 0 99px, var(--accent-soft) 100px 101.5px);
+  -webkit-mask:radial-gradient(circle, #000 0, #000 45%, transparent 70%);
+          mask:radial-gradient(circle, #000 0, #000 45%, transparent 70%);
+  opacity:.9;
+  animation:sweep 7s linear infinite;
+}
+@keyframes sweep{to{transform:rotate(1turn);}}
+@media (max-width:640px){#app-shell::before{opacity:.5;height:360px;}}
 
 /* ---------- Login ---------- */
 .login-screen{
@@ -133,11 +152,14 @@ input[type="checkbox"]{accent-color:var(--accent);width:1rem;height:1rem;margin:
   padding:.7rem 1.5rem;background:color-mix(in srgb, var(--surface) 88%, transparent);
   -webkit-backdrop-filter:saturate(1.4) blur(10px);backdrop-filter:saturate(1.4) blur(10px);
 }
-/* Guarda de aguayo bajo la barra */
+/* Señal que recorre el borde inferior de la barra */
 .topbar::after{
-  content:"";position:absolute;left:0;right:0;bottom:-6px;height:6px;pointer-events:none;
-  background:url("../assets/aguayo.svg") left center / 24px 6px repeat-x;
+  content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;pointer-events:none;
+  background:linear-gradient(90deg, transparent 0, var(--signal) 50%, transparent 100%) no-repeat, var(--border);
+  background-size:180px 1px, 100% 1px;
+  animation:scan 6s cubic-bezier(.45,0,.25,1) infinite;
 }
+@keyframes scan{0%{background-position:-180px 0, 0 0;}70%,100%{background-position:calc(100% + 180px) 0, 0 0;}}
 .brand{display:flex;align-items:center;gap:.6rem;font-family:var(--font-sans);font-weight:500;font-size:.95rem;color:var(--muted);white-space:nowrap;}
 .brand b{font-family:var(--font-brand);color:var(--ink);font-weight:700;letter-spacing:-.02em;}
 .brand-mark{display:inline-flex;color:var(--accent-ink);background:var(--accent);border-radius:var(--radius-sm);padding:.3rem;}
@@ -156,7 +178,7 @@ input[type="checkbox"]{accent-color:var(--accent);width:1rem;height:1rem;margin:
   display:inline-flex;align-items:center;gap:.45rem;
   font-size:.8rem;font-weight:500;color:var(--muted);white-space:nowrap;
 }
-.demo-tag::before{content:"";width:.5rem;height:.5rem;border-radius:50%;background:var(--c-general);box-shadow:0 0 0 3px rgba(30,138,79,.18);}
+.demo-tag::before{content:"";width:.5rem;height:.5rem;border-radius:50%;background:var(--signal);box-shadow:0 0 0 3px var(--signal-soft);}
 
 @media (max-width:720px){
   .topbar{padding:.55rem 1rem 0;gap:.4rem .6rem;}
