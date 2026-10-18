@@ -1,6 +1,6 @@
 # Sistema de Mapeo Nexus — diseño "Carta topográfica"
 
-Referencia: cartas del Instituto Geográfico. Papel gris verdoso frío, tinta azul petróleo y curvas de nivel (`assets/contours.svg`) como único ornamento, solo en el login y en el recuadro del globo.
+Referencia: cartas del Instituto Geográfico. Papel gris verdoso frío, tinta azul petróleo y curvas de nivel (`assets/contours.svg`) como único ornamento, solo en el login.
 
 ## Colores (tokens en `css/style.css`, claro / oscuro)
 - `--paper` #E6EBE7 / #0C191D: fondo
@@ -19,4 +19,4 @@ Referencia: cartas del Instituto Geográfico. Papel gris verdoso frío, tinta az
 - Las cifras van en una sola lámina dividida por líneas finas (como el recuadro de referencias de un mapa), no en tarjetas sueltas iguales.
 - Radios: 10px para láminas, 6px para controles. Sombra suave con desplazamiento.
 - Movimiento: solo transiciones de estado (150 a 250 ms). Se respeta `prefers-reduced-motion`.
-- El globo 3D de Inicio (rojo, espinas, ojos) no se toca: es un pedido explícito.
+- Inicio arranca directo con las cifras (el globo 3D se sacó el 18/10 a pedido de Zeta; queda en el historial de git).
