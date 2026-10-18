@@ -137,8 +137,17 @@
     if (!box) return;
     box.hidden = !data.sync_error;
     box.textContent = data.sync_error
-      ? "⚠️ La actualización desde la planilla está frenada: " + data.sync_error
+      ? "⚠️ La actualización desde la planilla está frenada: " + data.sync_error +
+        (data.sync_autorizable ? " El administrador lo puede confirmar en Inicio." : "")
       : "";
+    // borrado masivo frenado: el administrador lo confirma con su clave (nx_sync_autorizar)
+    const auth = document.getElementById("admin-auth");
+    if (auth) {
+      auth.hidden = !data.sync_autorizable;
+      document.getElementById("admin-auth-text").textContent = data.sync_autorizable
+        ? data.sync_error + " Si borraste o reemplazaste los datos a propósito, confirmá y el sistema queda igual a la planilla."
+        : "";
+    }
   }
 
   function applyData(data) {
@@ -1304,8 +1313,7 @@
           form.hidden = true;
           return;
         }
-        // no-cors + text/plain: pedido simple, sin consulta previa; solo falla si no hay red
-        await fetch(SYNC_WEBHOOK, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain" }, body: "{}" });
+        await avisarN8n();
         msg.textContent = "Listo: se está leyendo la planilla. Tarda unos 8 minutos y el sistema se actualiza solo, no hace falta recargar.";
         form.hidden = true;
       } catch (e) {
@@ -1315,6 +1323,43 @@
         btn.disabled = false;
       }
     });
+
+    // Confirmar un borrado masivo que el control de seguridad frenó (vale una sola vez)
+    const auth = document.getElementById("admin-auth");
+    const authForm = document.getElementById("admin-auth-form");
+    const authInput = document.getElementById("admin-auth-clave");
+    if (!authForm) return;
+    authForm.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const btn = authForm.querySelector("button[type=submit]");
+      btn.disabled = true;
+      msg.textContent = "Verificando…";
+      try {
+        const r = await window.NexusAuth.rpc("nx_sync_autorizar", { p_clave: authInput.value });
+        if (!r || !r.ok) {
+          msg.textContent = (r && r.error) || "No se pudo confirmar.";
+          return;
+        }
+        authInput.value = "";
+        auth.hidden = true;
+        if (r.en_curso) {
+          msg.textContent = "Ya hay una actualización en curso. El sistema se refresca solo cuando termina.";
+          return;
+        }
+        await avisarN8n();
+        msg.textContent = "Confirmado: el sistema se está reemplazando con lo que hay en la planilla. Tarda unos minutos y se actualiza solo.";
+      } catch (e) {
+        if (e && e.unauthorized) return;
+        msg.textContent = "No se pudo avisar al servidor. Probá de nuevo en un rato.";
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
+  // no-cors + text/plain: pedido simple, sin consulta previa; solo falla si no hay red
+  function avisarN8n() {
+    return fetch(SYNC_WEBHOOK, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain" }, body: "{}" });
   }
 
   // ---------------------------------------------------------------

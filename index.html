@@ -126,6 +126,14 @@
         <button type="submit" class="btn">Actualizar ahora</button>
       </form>
       <p id="admin-sync-msg" class="admin-sync-msg" role="status"></p>
+      <div id="admin-auth" class="admin-auth" hidden>
+        <p id="admin-auth-text" class="admin-auth-text"></p>
+        <form id="admin-auth-form" class="admin-sync-form">
+          <label for="admin-auth-clave">Clave de administrador para confirmar</label>
+          <input id="admin-auth-clave" type="password" autocomplete="off" required />
+          <button type="submit" class="btn">Sí, reemplazar con la planilla</button>
+        </form>
+      </div>
     </div>
   </section>
 

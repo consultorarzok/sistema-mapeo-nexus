@@ -515,3 +515,8 @@ main{max-width:1120px;margin:0 auto;padding:2.75rem 1.5rem 4rem;}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;}
 }
+
+/* Confirmar borrado masivo frenado por el control de seguridad */
+.admin-auth{width:100%;padding:.9rem 1rem;border:1px solid var(--ochre-line);background:var(--ochre-soft);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:.6rem;}
+.admin-auth[hidden]{display:none;}
+.admin-auth-text{margin:0;font-size:.875rem;line-height:1.45;color:var(--ink);text-align:center;}
