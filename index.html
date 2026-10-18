@@ -4,7 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sistema de Mapeo Nexus</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Libre+Franklin:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+<meta name="theme-color" content="#0D5A6E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=JetBrains+Mono:wght@500;600&display=swap">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -15,7 +18,7 @@
       <svg viewBox="0 0 24 24" width="26" height="26" fill="none"><path d="M12 2 2 7v10l10 5 10-5V7L12 2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 12v10M12 12 2 7M12 12l10-5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
     </span>
     <h1>Sistema de Mapeo <b>Nexus</b></h1>
-    <p class="lede">Acceso interno — ingresá usuario y contraseña.</p>
+    <p class="lede">Acceso interno. Ingresá tu usuario y contraseña.</p>
     <div class="field">
       <label for="login-usuario">Usuario</label>
       <input id="login-usuario" type="text" autocomplete="username" required>
@@ -57,6 +60,7 @@
 
   <!-- ===================== INICIO ===================== -->
   <section id="tab-inicio" class="tab-panel active">
+    <h1 class="sr-only">Inicio</h1>
     <div class="nexus-hero">
       <canvas id="globe-canvas"></canvas>
     </div>
@@ -131,7 +135,6 @@
 
   <!-- ===================== MAPA ===================== -->
   <section id="tab-mapa" class="tab-panel">
-    <div class="eyebrow">Explorar</div>
     <h1>Departamentos, distritos e instituciones</h1>
 
     <div class="mapa-layout">
@@ -183,7 +186,6 @@
 
   <!-- ===================== MAPA GENERAL (OpenStreetMap, gratis) ===================== -->
   <section id="tab-osm" class="tab-panel">
-    <div class="eyebrow">Vista completa · sin costo</div>
     <h1>Mapa general de personas</h1>
     <p class="lede">Todas las personas del padrón a la vez, más las instituciones con su cantidad de personas y su rango de alcance, sobre OpenStreetMap. Ubicación a nivel de calle (aproximada); para la dirección exacta usá la pestaña Mapa (Google).</p>
 
@@ -199,7 +201,6 @@
 
   <!-- ===================== BUSCADOR ===================== -->
   <section id="tab-buscador" class="tab-panel">
-    <div class="eyebrow">Consulta</div>
     <h1>Buscador por código</h1>
     <p class="lede">Buscá por código interno, nombre o apellido para ver los datos de esa persona.</p>
 
@@ -207,7 +208,7 @@
       <label for="input-codigo">Código, nombre o apellido</label>
       <input id="input-codigo" type="text" list="codigos-list" placeholder="Escribí un código, nombre o apellido…" autocomplete="off">
       <datalist id="codigos-list"></datalist>
-      <span class="field-hint">Se busca en vivo cruzando con el padrón — la lista de códigos no está fija, puede crecer.</span>
+      <span class="field-hint">Se busca en vivo en el padrón. La lista de códigos no es fija: crece a medida que se cargan visitas.</span>
     </div>
 
     <div id="codigo-results" class="codigo-results"></div>
