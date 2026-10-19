@@ -14,7 +14,7 @@
     infoWindow: null,
     institutionMarkers: [],
     reachCircles: [],
-    personMarkers: [],
+    personLayer: null,
     mapMode: "instituciones", // "instituciones" (azul, siempre visible) | "personas" (verde/rojo + círculo de alcance, se suma a las instituciones)
     mapaTabVisitada: false,
   };
@@ -692,7 +692,7 @@
     // "capas" separadas: las instituciones (azul) nunca se borran al mostrar personas
     STATE.institutionMarkers = [];
     STATE.reachCircles = [];
-    STATE.personMarkers = [];
+    STATE.personLayer = crearCapaPersonas(STATE.map);
 
     // un solo InfoWindow compartido para todos los popups (institución o persona)
     STATE.infoWindow = new google.maps.InfoWindow();
@@ -706,6 +706,105 @@
     });
 
     return STATE.map;
+  }
+
+  // Capa única: todas las personas se dibujan en UN solo <canvas> sobre el mapa, en vez de un marcador de Google
+  // por persona (con miles de marcadores el navegador se traba). Cada punto guarda su persona para el toque.
+  function crearCapaPersonas(map) {
+    const RADIO = 7, TOQUE = 12;
+    class Capa extends google.maps.OverlayView {
+      constructor() {
+        super();
+        this.pts = [];
+        this.pendiente = false;
+        this.canvas = document.createElement("canvas");
+        this.canvas.style.position = "absolute";
+        this.canvas.style.pointerEvents = "none";
+        this.setMap(map);
+      }
+      onAdd() { this.getPanes().overlayLayer.appendChild(this.canvas); }
+      onRemove() { this.canvas.remove(); }
+      add(nuevos) { for (const pt of nuevos) this.pts.push(pt); this.pedirDibujo(); }
+      clear() { this.pts.length = 0; this.pedirDibujo(); }
+      pedirDibujo() {
+        if (this.pendiente) return;
+        this.pendiente = true;
+        requestAnimationFrame(() => { this.pendiente = false; this.draw(); });
+      }
+      draw() {
+        const proj = this.getProjection(), b = map.getBounds();
+        if (!proj || !b) return;
+        const sw = proj.fromLatLngToDivPixel(b.getSouthWest()), ne = proj.fromLatLngToDivPixel(b.getNorthEast());
+        const ancho = Math.abs(ne.x - sw.x), alto = Math.abs(sw.y - ne.y);
+        const mx = ancho * 0.5, my = alto * 0.5; // margen: al arrastrar el mapa no quedan bordes vacíos
+        const x0 = Math.min(sw.x, ne.x) - mx, y0 = Math.min(sw.y, ne.y) - my;
+        const w = Math.ceil(ancho + 2 * mx), h = Math.ceil(alto + 2 * my);
+        const dpr = window.devicePixelRatio || 1;
+        const c = this.canvas;
+        if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+          c.width = Math.round(w * dpr);
+          c.height = Math.round(h * dpr);
+        }
+        c.style.width = w + "px";
+        c.style.height = h + "px";
+        c.style.left = x0 + "px";
+        c.style.top = y0 + "px";
+        const ctx = c.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#fff";
+        // primero las de Planilla General, encima las de B
+        for (const rojo of [false, true]) {
+          for (const pt of this.pts) {
+            if (pt.b !== rojo) continue;
+            const q = proj.fromLatLngToDivPixel(pt.ll);
+            const x = q.x - x0, y = q.y - y0;
+            if (x < -RADIO || y < -RADIO || x > w + RADIO || y > h + RADIO) continue;
+            ctx.globalAlpha = pt.a ? 0.45 : 1;
+            ctx.fillStyle = pt.color;
+            ctx.beginPath();
+            ctx.arc(x, y, RADIO, 0, 6.2832);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+      // punto más cercano al toque (dentro de TOQUE píxeles); ante empate gana el de B, que se ve encima
+      cercano(latLng) {
+        const proj = this.getProjection();
+        if (!proj || !latLng) return null;
+        const t = proj.fromLatLngToContainerPixel(latLng);
+        let mejor = null, dm = TOQUE + 1;
+        for (const pt of this.pts) {
+          const q = proj.fromLatLngToContainerPixel(pt.ll);
+          const d = Math.hypot(q.x - t.x, q.y - t.y) - (pt.b ? 3 : 0);
+          if (d <= TOQUE && d < dm) { dm = d; mejor = pt; }
+        }
+        return mejor;
+      }
+    }
+    const capa = new Capa();
+    map.addListener("idle", () => capa.pedirDibujo());
+    map.addListener("click", (e) => {
+      if (STATE.mapMode !== "personas") return;
+      const pt = capa.cercano(e.latLng);
+      if (!pt) return;
+      STATE.infoWindow.setOptions({ pixelOffset: new google.maps.Size(0, -RADIO) });
+      STATE.infoWindow.setContent(popupHtml(pt.p));
+      STATE.infoWindow.setPosition(pt.ll);
+      STATE.infoWindow.open({ map });
+      showSelectedPersonCard(pt.p);
+    });
+    let ultimoMov = 0;
+    map.addListener("mousemove", (e) => {
+      const ahora = Date.now();
+      if (ahora - ultimoMov < 90 || STATE.mapMode !== "personas") return;
+      ultimoMov = ahora;
+      map.setOptions({ draggableCursor: capa.cercano(e.latLng) ? "pointer" : null });
+    });
+    return capa;
   }
 
   function clearMarkers(arr) {
@@ -856,6 +955,7 @@
         icon: coloredIcon("#2D6CDF"),
       });
       marker.addListener("click", () => {
+        STATE.infoWindow.setOptions({ pixelOffset: new google.maps.Size(0, 0) });
         STATE.infoWindow.setContent(institucionPopupHtml(inst));
         STATE.infoWindow.open({ anchor: marker, map });
         selectInstitucion(inst);
@@ -880,7 +980,7 @@
     hideSelectedPersonCard();
 
     const map = ensureMap();
-    clearMarkers(STATE.personMarkers);
+    STATE.personLayer.clear();
     clearMarkers(STATE.reachCircles);
     setTimeout(() => google.maps.event.trigger(map, "resize"), 50);
 
@@ -933,7 +1033,7 @@
     const map = ensureMap();
     clearMarkers(STATE.reachCircles);
     if (!incremental) {
-      clearMarkers(STATE.personMarkers);
+      STATE.personLayer.clear();
       STATE.focus.stats = { maxDist: 0, ubicadas: 0, visibles: 0, aprox: 0, hechas: 0 };
       setTimeout(() => google.maps.event.trigger(map, "resize"), 50);
     }
@@ -945,6 +1045,7 @@
     if (hasInst) bounds.push([inst.lat, inst.lng]);
     const desde = incremental ? st.hechas : 0;
     st.hechas = people.length;
+    const nuevos = [];
     for (let k = desde; k < people.length; k++) {
       const p = people[k];
       const lat = p.Latitud, lng = p.Longitud;
@@ -957,14 +1058,9 @@
       if (!color) continue;
       st.visibles++;
       bounds.push([lat, lng]);
-      const marker = new google.maps.Marker({ position: { lat, lng }, map, icon: coloredIcon(color), opacity: p._aprox ? 0.45 : 1, zIndex: color === "#EB5757" ? 2 : 1 });
-      marker.addListener("click", () => {
-        STATE.infoWindow.setContent(popupHtml(p));
-        STATE.infoWindow.open({ anchor: marker, map });
-        showSelectedPersonCard(p);
-      });
-      STATE.personMarkers.push(marker);
+      nuevos.push({ ll: new google.maps.LatLng(lat, lng), p, color, b: color === "#EB5757", a: !!p._aprox });
     }
+    STATE.personLayer.add(nuevos);
 
     if (hasInst && st.maxDist > 0) {
       const radius = Math.min(6000, Math.max(300, st.maxDist * 1.25));
@@ -996,7 +1092,7 @@
     STATE.mapMode = "instituciones";
     STATE.focus = null;
     setPersonToggles(false);
-    clearMarkers(STATE.personMarkers);
+    STATE.personLayer.clear();
     clearMarkers(STATE.reachCircles);
     document.getElementById("btn-volver-instituciones").hidden = true;
     hideSelectedPersonCard();
