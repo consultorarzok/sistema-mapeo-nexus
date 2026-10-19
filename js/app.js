@@ -820,6 +820,11 @@
 
   function fitToBounds(map, points) {
     if (!points.length) return;
+    if (points.length === 1) { // un solo punto: fitBounds acercaría al máximo
+      map.setCenter({ lat: points[0][0], lng: points[0][1] });
+      map.setZoom(15);
+      return;
+    }
     const bounds = new google.maps.LatLngBounds();
     points.forEach(([lat, lng]) => bounds.extend({ lat, lng }));
     map.fitBounds(bounds, 30);
@@ -1023,7 +1028,8 @@
     gmChk("reales").addEventListener("change", () => {
       STATE.soloReales = gmChk("reales").checked;
       const f = STATE.focus;
-      if (f) selectInstitucion(f.inst, { sinMover: true }); // vuelve a pedir las personas con el filtro nuevo
+      // vuelve a pedir las personas con el filtro nuevo; el mapa solo se mantiene en su lugar si ya había puntos a la vista
+      if (f) selectInstitucion(f.inst, { sinMover: !!(f.stats && f.stats.visibles > 0) });
     });
     gmChk("reach").addEventListener("change", () => {
       const on = gmChk("reach").checked;
