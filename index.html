@@ -217,13 +217,13 @@
   <!-- ===================== BUSCADOR ===================== -->
   <section id="tab-buscador" class="tab-panel">
     <h1>Buscador por código</h1>
-    <p class="lede">Buscá por código interno, nombre o apellido para ver los datos de esa persona.</p>
+    <p class="lede">Escribí el código de la persona para ver sus datos.</p>
 
     <div class="field field--inline">
-      <label for="input-codigo">Código, nombre o apellido</label>
-      <input id="input-codigo" type="text" list="codigos-list" placeholder="Escribí un código, nombre o apellido…" autocomplete="off">
+      <label for="input-codigo">Código</label>
+      <input id="input-codigo" type="text" list="codigos-list" placeholder="Escribí el código…" inputmode="numeric" autocomplete="off">
       <datalist id="codigos-list"></datalist>
-      <span class="field-hint">Se busca en vivo en el padrón. La lista de códigos no es fija: crece a medida que se cargan visitas.</span>
+      <span class="field-hint">Solo se busca por código, en vivo en el padrón.</span>
     </div>
 
     <div id="codigo-results" class="codigo-results"></div>

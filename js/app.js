@@ -111,7 +111,7 @@
     input.scrollIntoView({ behavior: "smooth", block: "center" });
   }
   function jumpToBuscador(p) {
-    jumpToBuscadorQuery(p.Apellido + " " + p.Nombre);
+    jumpToBuscadorQuery(String(p.Codigo));
   }
 
   function instById(id) {
@@ -933,7 +933,7 @@
   }
 
   // ---------------------------------------------------------------
-  // Buscador: código, o nombre y apellido en cualquier orden. Busca en la base (620.000 personas),
+  // Buscador: solo por código. Busca en la base (620.000 personas),
   // no en el navegador; se espera un instante a que termine de escribir.
   // ---------------------------------------------------------------
   let searchSeq = 0;
@@ -973,7 +973,7 @@
     const wrap = document.getElementById("codigo-results");
     wrap.innerHTML = "";
     if (!people.length) {
-      wrap.innerHTML = '<div class="empty-hint">No hay personas que coincidan con ese código o nombre.</div>';
+      wrap.innerHTML = '<div class="empty-hint">No hay personas con ese código.</div>';
       return;
     }
     people.forEach((p) => STATE.rowIndex.set(p.row_number, p));
