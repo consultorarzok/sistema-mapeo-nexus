@@ -15,6 +15,8 @@
     institutionMarkers: [],
     reachCircles: [],
     personLayer: null,
+    soloReales: true, // casilla "Solo ubicación real": encendida por defecto
+    loadSeq: 0, // cada elección/cambio de casilla invalida las cargas anteriores
     mapMode: "instituciones", // "instituciones" (azul, siempre visible) | "personas" (verde/rojo + círculo de alcance, se suma a las instituciones)
     mapaTabVisitada: false,
   };
@@ -615,12 +617,14 @@
     };
   }
 
-  async function loadPeople(inst, onChunk) {
-    if (STATE.peopleCache.has(inst.id)) return STATE.peopleCache.get(inst.id);
+  async function loadPeople(inst, onChunk, seq) {
+    const clave = inst.id + (STATE.soloReales ? ":reales" : ":todas");
+    if (STATE.peopleCache.has(clave)) return STATE.peopleCache.get(clave);
     const people = [];
     let desde = 0, quedan = true;
     while (quedan) {
-      const r = await window.NexusAuth.rpc("nx_personas_lite", { p_inst: inst.id, p_desde: desde, p_limit: TANDA_PERSONAS });
+      const r = await window.NexusAuth.rpc("nx_personas_lite", { p_inst: inst.id, p_desde: desde, p_limit: TANDA_PERSONAS, p_solo_exactas: STATE.soloReales });
+      if (desde === 0) { people.total = r.total; people.totalB = r.total_b; } // lo que coincide con el filtro
       for (const a of r.items) {
         const p = personaDeFila(inst, a);
         STATE.rowIndex.set(p.row_number, p);
@@ -628,15 +632,17 @@
       }
       desde = r.last;
       quedan = r.more;
-      if (STATE.selectedInstId !== inst.id) return people; // eligió otra: no seguir pidiendo ni guardar a medias
+      if (STATE.selectedInstId !== inst.id || seq !== STATE.loadSeq) return people; // eligió otra o cambió la casilla: no seguir pidiendo ni guardar a medias
       if (onChunk) onChunk(people, quedan);
     }
-    STATE.peopleCache.set(inst.id, people);
+    STATE.peopleCache.set(clave, people);
     return people;
   }
 
   async function selectInstitucion(inst, opts) {
     const silent = opts && opts.silent;
+    const sinMover = opts && opts.sinMover; // al cambiar la casilla no se vuelve a encuadrar el mapa
+    const seq = ++STATE.loadSeq;
     STATE.selectedInstId = inst.id;
     document.querySelectorAll(".inst-card").forEach((c) => {
       c.classList.toggle("active", c.dataset.inst === String(inst.id));
@@ -649,31 +655,31 @@
     }
     let primera = true;
     const alLlegar = (parcial, quedan) => {
-      if (STATE.selectedInstId !== inst.id) return;
+      if (STATE.selectedInstId !== inst.id || seq !== STATE.loadSeq) return;
       if (primera) {
         primera = false;
         renderInstDetail(inst, parcial);
-        if (!silent) focusInstitutionOnMap(inst, parcial);
+        if (!silent) focusInstitutionOnMap(inst, parcial, !sinMover);
       } else if (!silent && STATE.focus && STATE.focus.inst === inst) {
         STATE.focus.people = parcial;
         drawFocusPersons(false, true);
       }
       if (quedan && !silent) {
         document.getElementById("map-note").textContent =
-          "Cargando personas… " + fmtN(parcial.length) + " de " + fmtN(inst.personas);
+          "Cargando personas… " + fmtN(parcial.length) + " de " + fmtN(parcial.total != null ? parcial.total : inst.personas);
       }
     };
     let people;
     try {
-      people = await loadPeople(inst, alLlegar);
+      people = await loadPeople(inst, alLlegar, seq);
     } catch (e) {
       if (STATE.selectedInstId === inst.id) detail.innerHTML = '<p class="planilla-auto-note">No se pudieron cargar las personas. Probá de nuevo.</p>';
       return;
     }
-    if (STATE.selectedInstId !== inst.id) return; // eligió otra mientras cargaba
+    if (STATE.selectedInstId !== inst.id || seq !== STATE.loadSeq) return; // eligió otra mientras cargaba
     if (primera) { // ya estaban en memoria: se dibuja de una vez
       renderInstDetail(inst, people);
-      if (!silent) focusInstitutionOnMap(inst, people);
+      if (!silent) focusInstitutionOnMap(inst, people, !sinMover);
     }
   }
 
@@ -990,11 +996,11 @@
   }
 
   // Al elegir una institución: las demás se ocultan y aparecen los puntos de sus personas.
-  function focusInstitutionOnMap(inst, people) {
+  function focusInstitutionOnMap(inst, people, encuadrar) {
     STATE.focus = { inst, people };
     populateInstitutionLayer(inst);
     setPersonToggles(true);
-    drawFocusPersons(true);
+    drawFocusPersons(encuadrar !== false);
   }
 
   // Casillas del mapa (igual que en Mapa general). Las de personas se habilitan al elegir una institución.
@@ -1004,8 +1010,8 @@
     ["general", "b", "reach"].forEach((k) => (gmChk(k).disabled = !enabled));
     document.querySelectorAll(".gm-pers").forEach((l) => l.classList.toggle("is-disabled", !enabled));
     const f = STATE.focus;
-    document.getElementById("gm-count-general").textContent = enabled && f ? fmtN(f.inst.personas) : "";
-    document.getElementById("gm-count-b").textContent = enabled && f ? fmtN(f.inst.b) : "";
+    document.getElementById("gm-count-general").textContent = enabled && f ? fmtN(f.people.total != null ? f.people.total : f.inst.personas) : "";
+    document.getElementById("gm-count-b").textContent = enabled && f ? fmtN(f.people.totalB != null ? f.people.totalB : f.inst.b) : "";
   }
 
   function setupMapToggles() {
@@ -1014,6 +1020,11 @@
       STATE.institutionMarkers.forEach((m) => m.setMap(on ? STATE.map : null));
     });
     ["general", "b"].forEach((k) => gmChk(k).addEventListener("change", () => STATE.focus && drawFocusPersons(false)));
+    gmChk("reales").addEventListener("change", () => {
+      STATE.soloReales = gmChk("reales").checked;
+      const f = STATE.focus;
+      if (f) selectInstitucion(f.inst, { sinMover: true }); // vuelve a pedir las personas con el filtro nuevo
+    });
     gmChk("reach").addEventListener("change", () => {
       const on = gmChk("reach").checked;
       STATE.reachCircles.forEach((c) => c.setMap(on ? STATE.map : null));
@@ -1080,10 +1091,20 @@
 
     const faltan = people.length - st.ubicadas;
     const aprox = st.aprox;
-    document.getElementById("map-note").textContent =
-      (st.visibles ? "Tocá un punto para ver a la persona" : "Tildá Planilla General o Planilla B para ver sus personas") +
-      (aprox > 0 ? " · " + fmtN(aprox) + " con ubicación aproximada (puntos claros)" : "") +
-      (faltan > 0 ? " · " + fmtN(faltan) + " sin ubicar todavía" : "");
+    let nota;
+    if (STATE.soloReales) {
+      const reales = people.total != null ? people.total : people.length;
+      nota = reales === 0
+        ? "Ninguna persona de esta institución tiene ubicación real · apagá «Solo ubicación real» para ver las " + fmtN(inst.personas) + " con ubicación aproximada"
+        : (st.visibles ? "Tocá un punto para ver a la persona" : "Tildá Planilla General o Planilla B para ver sus personas") +
+          " · solo ubicación real: " + fmtN(reales) + " de " + fmtN(inst.personas);
+    } else {
+      nota =
+        (st.visibles ? "Tocá un punto para ver a la persona" : "Tildá Planilla General o Planilla B para ver sus personas") +
+        (aprox > 0 ? " · " + fmtN(aprox) + " con ubicación aproximada (puntos claros)" : "") +
+        (faltan > 0 ? " · " + fmtN(faltan) + " sin ubicar todavía" : "");
+    }
+    document.getElementById("map-note").textContent = nota;
     if (fit) fitToBounds(map, bounds);
   }
 
