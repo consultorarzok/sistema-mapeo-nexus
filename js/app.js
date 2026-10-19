@@ -70,6 +70,17 @@
     const data = await window.NexusAuth.rpc("nx_observacion", { p_row: p.row_number, p_texto: texto });
     if (!data.ok) throw new Error(data.error || "No se pudo guardar");
     p.Observacion = texto;
+    p._obsLista = true;
+  }
+
+  // Las personas del mapa llegan sin observación: se pide al tocarlas (una consulta chica por código).
+  async function cargarObservacion(p) {
+    if (p._obsLista) return;
+    const res = await window.NexusAuth.rpc("nx_buscar", { p_q: String(p.Codigo), p_limit: 60 });
+    const fila = (res.rows || []).find((x) => x.row_number === p.row_number);
+    if (p._obsLista) return; // la guardaron mientras tanto
+    p.Observacion = fila ? fila.Observacion || "" : "";
+    p._obsLista = true;
   }
 
   function cleanName(s) {
@@ -582,7 +593,7 @@
       '<div class="inst-fields">' +
       "<div><b>Dirección</b>" + escapeHtml(inst.dir || "—") + "</div>" +
       "<div><b>Ubicación</b>" + escapeHtml(cleanName(inst.depto)) + " · " + escapeHtml(cleanName(inst.distrito || "")) + "</div>" +
-      "<div><b>Personas cargadas</b>" + fmtN(people.length) + " · " + fmtN(people.filter((p) => p._enB).length) + " en Planilla B</div>" +
+      "<div><b>Personas cargadas</b>" + fmtN(inst.personas) + " · " + fmtN(inst.b) + " en Planilla B</div>" +
       "</div>" +
       '<div class="result-links">' +
       '<a class="btn btn-maps" target="_blank" rel="noopener" href="' + googleMapsUrlInstitucion(inst) + '">Cómo llegar</a>' +
@@ -590,10 +601,36 @@
       '<p class="planilla-auto-note">Sus personas están en el mapa: con las casillas de arriba del mapa elegís Planilla General, Planilla B y el rango de alcance. Para buscar a alguien, usá el Buscador.</p>';
   }
 
-  async function loadPeople(inst) {
+  // Las personas de una institución llegan por tandas livianas (no todas juntas): la primera se dibuja
+  // enseguida y el resto se va sumando. Los datos de la institución no se repiten en cada fila.
+  const TANDA_PERSONAS = 1500;
+
+  function personaDeFila(inst, a) {
+    return {
+      row_number: a[0], Codigo: a[1], Apellido: a[2], Nombre: a[3], Direccion: a[4], Numero: a[5], Orden: a[6],
+      _enB: !!a[7], Latitud: a[8], Longitud: a[9], _aprox: !!a[10],
+      Departamento: inst.depto, Distrito: inst.distrito || "", Institucion: inst.nombre,
+      "Direccion de Institucion": inst.dir || "", inst_id: inst.id,
+      Observacion: "", _obsLista: false, // la observación se pide recién al tocar a la persona
+    };
+  }
+
+  async function loadPeople(inst, onChunk) {
     if (STATE.peopleCache.has(inst.id)) return STATE.peopleCache.get(inst.id);
-    const people = await window.NexusAuth.rpc("nx_personas", { p_inst: inst.id, p_limit: 8000 });
-    people.forEach((p) => STATE.rowIndex.set(p.row_number, p));
+    const people = [];
+    let desde = 0, quedan = true;
+    while (quedan) {
+      const r = await window.NexusAuth.rpc("nx_personas_lite", { p_inst: inst.id, p_desde: desde, p_limit: TANDA_PERSONAS });
+      for (const a of r.items) {
+        const p = personaDeFila(inst, a);
+        STATE.rowIndex.set(p.row_number, p);
+        people.push(p);
+      }
+      desde = r.last;
+      quedan = r.more;
+      if (STATE.selectedInstId !== inst.id) return people; // eligió otra: no seguir pidiendo ni guardar a medias
+      if (onChunk) onChunk(people, quedan);
+    }
     STATE.peopleCache.set(inst.id, people);
     return people;
   }
@@ -610,16 +647,34 @@
       detail.innerHTML = "<h3>" + escapeHtml(inst.nombre) + '</h3><p class="planilla-auto-note">Cargando personas…</p>';
       detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
+    let primera = true;
+    const alLlegar = (parcial, quedan) => {
+      if (STATE.selectedInstId !== inst.id) return;
+      if (primera) {
+        primera = false;
+        renderInstDetail(inst, parcial);
+        if (!silent) focusInstitutionOnMap(inst, parcial);
+      } else if (!silent && STATE.focus && STATE.focus.inst === inst) {
+        STATE.focus.people = parcial;
+        drawFocusPersons(false, true);
+      }
+      if (quedan && !silent) {
+        document.getElementById("map-note").textContent =
+          "Cargando personas… " + fmtN(parcial.length) + " de " + fmtN(inst.personas);
+      }
+    };
     let people;
     try {
-      people = await loadPeople(inst);
+      people = await loadPeople(inst, alLlegar);
     } catch (e) {
       if (STATE.selectedInstId === inst.id) detail.innerHTML = '<p class="planilla-auto-note">No se pudieron cargar las personas. Probá de nuevo.</p>';
       return;
     }
     if (STATE.selectedInstId !== inst.id) return; // eligió otra mientras cargaba
-    renderInstDetail(inst, people);
-    if (!silent) focusInstitutionOnMap(inst, people);
+    if (primera) { // ya estaban en memoria: se dibuja de una vez
+      renderInstDetail(inst, people);
+      if (!silent) focusInstitutionOnMap(inst, people);
+    }
   }
 
   // ---------------------------------------------------------------
@@ -737,8 +792,8 @@
       "<div><b>Dirección institución</b>" +
       p["Direccion de Institucion"] +
       "</div>" +
-      "<div><b>Observación</b>" +
-      (getObservacion(p) || "—") +
+      '<div class="sp-obs"><b>Observación</b>' +
+      (p._obsLista === false ? "…" : escapeHtml(getObservacion(p)) || "—") +
       "</div>" +
       "</div>" +
       '<div class="result-links">' +
@@ -752,6 +807,17 @@
       "</div>";
     box.querySelector(".sp-btn-buscar").addEventListener("click", () => jumpToBuscador(p));
     box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    if (p._obsLista === false) {
+      cargarObservacion(p)
+        .then(() => {
+          const el = box.querySelector(".sp-obs");
+          if (el && !box.hidden) el.innerHTML = "<b>Observación</b>" + (escapeHtml(getObservacion(p)) || "—");
+        })
+        .catch(() => {
+          const el = box.querySelector(".sp-obs");
+          if (el) el.innerHTML = "<b>Observación</b>no se pudo cargar";
+        });
+    }
   }
 
   function hideSelectedPersonCard() {
@@ -838,8 +904,8 @@
     ["general", "b", "reach"].forEach((k) => (gmChk(k).disabled = !enabled));
     document.querySelectorAll(".gm-pers").forEach((l) => l.classList.toggle("is-disabled", !enabled));
     const f = STATE.focus;
-    document.getElementById("gm-count-general").textContent = enabled && f ? fmtN(f.people.length) : "";
-    document.getElementById("gm-count-b").textContent = enabled && f ? fmtN(f.people.filter((p) => p._enB).length) : "";
+    document.getElementById("gm-count-general").textContent = enabled && f ? fmtN(f.inst.personas) : "";
+    document.getElementById("gm-count-b").textContent = enabled && f ? fmtN(f.inst.b) : "";
   }
 
   function setupMapToggles() {
@@ -856,32 +922,40 @@
 
   // Personas de la institución elegida: verde = Planilla General, rojo = está en Planilla B
   // (con las dos casillas, las de B se ven en rojo). Se suma el círculo de rango de alcance.
-  function drawFocusPersons(fit) {
+  // Sin segundo argumento redibuja todo; con incremental=true (llegó otra tanda) solo suma los puntos nuevos.
+  function drawFocusPersons(fit, soloNuevas) {
     const { inst, people } = STATE.focus;
+    const incremental = !!(soloNuevas && STATE.focus.stats);
     STATE.mapMode = "personas";
     document.getElementById("btn-volver-instituciones").hidden = false;
-    hideSelectedPersonCard();
+    if (!incremental) hideSelectedPersonCard();
 
     const map = ensureMap();
-    clearMarkers(STATE.personMarkers);
     clearMarkers(STATE.reachCircles);
-    setTimeout(() => google.maps.event.trigger(map, "resize"), 50);
+    if (!incremental) {
+      clearMarkers(STATE.personMarkers);
+      STATE.focus.stats = { maxDist: 0, ubicadas: 0, visibles: 0, aprox: 0, hechas: 0 };
+      setTimeout(() => google.maps.event.trigger(map, "resize"), 50);
+    }
+    const st = STATE.focus.stats;
 
     const wantG = gmChk("general").checked, wantB = gmChk("b").checked;
     const hasInst = inst.lat != null && inst.lng != null;
     const bounds = [];
     if (hasInst) bounds.push([inst.lat, inst.lng]);
-    let maxDist = 0;
-    let ubicadas = 0, visibles = 0;
-    for (const p of people) {
+    const desde = incremental ? st.hechas : 0;
+    st.hechas = people.length;
+    for (let k = desde; k < people.length; k++) {
+      const p = people[k];
       const lat = p.Latitud, lng = p.Longitud;
       if (lat == null || lng == null) continue;
-      ubicadas++;
+      st.ubicadas++;
+      if (p._aprox) st.aprox++;
       // las aproximadas rodean la institución: no definen el rango de alcance
-      if (hasInst && !p._aprox) maxDist = Math.max(maxDist, haversineMeters(inst.lat, inst.lng, lat, lng));
+      if (hasInst && !p._aprox) st.maxDist = Math.max(st.maxDist, haversineMeters(inst.lat, inst.lng, lat, lng));
       const color = wantB && p._enB ? "#EB5757" : wantG ? "#27AE60" : null;
       if (!color) continue;
-      visibles++;
+      st.visibles++;
       bounds.push([lat, lng]);
       const marker = new google.maps.Marker({ position: { lat, lng }, map, icon: coloredIcon(color), opacity: p._aprox ? 0.45 : 1, zIndex: color === "#EB5757" ? 2 : 1 });
       marker.addListener("click", () => {
@@ -892,8 +966,8 @@
       STATE.personMarkers.push(marker);
     }
 
-    if (hasInst && maxDist > 0) {
-      const radius = Math.min(6000, Math.max(300, maxDist * 1.25));
+    if (hasInst && st.maxDist > 0) {
+      const radius = Math.min(6000, Math.max(300, st.maxDist * 1.25));
       STATE.reachCircles.push(
         new google.maps.Circle({
           center: { lat: inst.lat, lng: inst.lng },
@@ -908,10 +982,10 @@
       );
     }
 
-    const faltan = people.length - ubicadas;
-    const aprox = people.filter((p) => p._aprox).length;
+    const faltan = people.length - st.ubicadas;
+    const aprox = st.aprox;
     document.getElementById("map-note").textContent =
-      (visibles ? "Tocá un punto para ver a la persona" : "Tildá Planilla General o Planilla B para ver sus personas") +
+      (st.visibles ? "Tocá un punto para ver a la persona" : "Tildá Planilla General o Planilla B para ver sus personas") +
       (aprox > 0 ? " · " + fmtN(aprox) + " con ubicación aproximada (puntos claros)" : "") +
       (faltan > 0 ? " · " + fmtN(faltan) + " sin ubicar todavía" : "");
     if (fit) fitToBounds(map, bounds);
