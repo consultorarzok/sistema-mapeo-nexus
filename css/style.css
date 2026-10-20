@@ -527,3 +527,29 @@ main{max-width:1120px;margin:0 auto;padding:2.75rem 1.5rem 4rem;}
 .admin-auth{width:100%;padding:.9rem 1rem;border:1px solid var(--ochre-line);background:var(--ochre-soft);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:.6rem;}
 .admin-auth[hidden]{display:none;}
 .admin-auth-text{margin:0;font-size:.875rem;line-height:1.45;color:var(--ink);text-align:center;}
+
+/* ---------- Verificaciones ---------- */
+.verif-row{display:flex;gap:.75rem 1rem;flex-wrap:wrap;align-items:flex-end;margin-top:.9rem;}
+.verif-field{display:flex;flex-direction:column;gap:.25rem;font-size:.78rem;color:var(--muted);font-weight:500;}
+.verif-field--wsp{flex:1;min-width:230px;}
+.verif-sel,.verif-wsp{
+  min-height:2.5rem;padding:.45rem .7rem;border-radius:var(--radius-sm);border:1px solid var(--border);
+  background:var(--surface);color:var(--ink);font-size:.9rem;font-weight:600;
+}
+.verif-sel{min-width:10.5rem;cursor:pointer;}
+.verif-sel.is-on{border-color:var(--c-general);background:color-mix(in srgb, var(--c-general) 14%, var(--surface));color:var(--t-general);}
+.verif-sel:focus,.verif-wsp:focus{outline:none;border-color:var(--accent);box-shadow:var(--ring);}
+.verif-wsp-row{display:flex;gap:.4rem;align-items:center;}
+.verif-wsp{flex:1;min-width:0;font-weight:500;}
+.verif-wsp-row .btn{min-height:2.5rem;text-decoration:none;white-space:nowrap;}
+.verif-note{font-size:.8rem;font-weight:500;color:var(--t-general);margin-top:.35rem;min-height:1.1em;opacity:0;transition:opacity .15s;}
+.verif-note.show{opacity:1;}
+.verif-note.is-error{color:var(--t-b);}
+.selected-person-card .verif-host{margin-top:.6rem;}
+.vf-counters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.75rem;margin-top:1.25rem;}
+.vf-counter{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.8rem 1rem;box-shadow:var(--shadow);display:flex;flex-direction:column;}
+.vf-counter b{font-family:var(--font-brand);font-size:1.6rem;font-weight:700;letter-spacing:-.02em;}
+.vf-counter span{color:var(--muted);font-size:.8rem;}
+.vf-filters{margin-top:1.25rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.75rem;}
+.vf-more{margin:1rem auto 0;display:block;}
+.vf-more[hidden],.verif-wsp-open[hidden]{display:none;}

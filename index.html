@@ -57,6 +57,7 @@
     <button class="tab-btn" data-tab="mapa" role="tab">Mapa</button>
     <button class="tab-btn" data-tab="osm" role="tab">Mapa general</button>
     <button class="tab-btn" data-tab="buscador" role="tab">Buscador por código</button>
+    <button class="tab-btn" data-tab="verificaciones" role="tab">Verificaciones</button>
   </nav>
   <span class="demo-tag" id="live-tag">Datos en vivo</span>
   <button id="logout-btn" class="btn btn-secondary logout-btn" title="Cerrar sesión">Salir</button>
@@ -228,6 +229,33 @@
     </div>
 
     <div id="codigo-results" class="codigo-results"></div>
+  </section>
+
+  <!-- ===================== VERIFICACIONES ===================== -->
+  <section id="tab-verificaciones" class="tab-panel">
+    <h1>Verificaciones</h1>
+    <p class="lede">Marcá si la persona está verificada, si ya fue contactada y guardá su WhatsApp. Filtrá para ver quién falta.</p>
+
+    <div class="vf-counters">
+      <div class="vf-counter"><b id="vf-ver">0</b><span>Verificados</span></div>
+      <div class="vf-counter"><b id="vf-con">0</b><span>Contactados</span></div>
+      <div class="vf-counter"><b id="vf-wsp">0</b><span>Con WhatsApp</span></div>
+      <div class="vf-counter"><b id="vf-total">0</b><span>Personas en total</span></div>
+    </div>
+
+    <div class="vf-filters">
+      <div class="field"><label for="vf-verif">Verificación</label>
+        <select id="vf-verif"><option value="todos">Todos</option><option value="si">Verificados</option><option value="no">Sin verificar</option></select></div>
+      <div class="field"><label for="vf-cont">Contacto</label>
+        <select id="vf-cont"><option value="todos">Todos</option><option value="si">Contactados</option><option value="no">Sin contactar</option></select></div>
+      <div class="field"><label for="vf-wsp-f">WhatsApp</label>
+        <select id="vf-wsp-f"><option value="todos">Todos</option><option value="con">Con WhatsApp</option><option value="sin">Sin WhatsApp</option></select></div>
+      <div class="field"><label for="vf-q">Código</label>
+        <input id="vf-q" type="text" inputmode="numeric" autocomplete="off" placeholder="Opcional"></div>
+    </div>
+
+    <div id="vf-results" class="codigo-results"></div>
+    <button type="button" id="vf-more" class="btn btn-secondary vf-more" hidden>Ver más</button>
   </section>
 
 </main>

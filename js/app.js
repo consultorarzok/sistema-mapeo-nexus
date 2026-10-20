@@ -82,6 +82,9 @@
     const fila = (res.rows || []).find((x) => x.row_number === p.row_number);
     if (p._obsLista) return; // la guardaron mientras tanto
     p.Observacion = fila ? fila.Observacion || "" : "";
+    p.Verificado = !!(fila && fila.Verificado);
+    p.Contactado = !!(fila && fila.Contactado);
+    p.WhatsApp = fila ? fila.WhatsApp || "" : "";
     p._obsLista = true;
   }
 
@@ -252,12 +255,14 @@
         document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
         document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
         btn.classList.add("active");
+        btn.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }); // en celular el menú se desplaza
         document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
         if (btn.dataset.tab === "mapa") {
           STATE.mapaTabVisitada = true;
           renderInstitutionMarkers();
         }
         if (btn.dataset.tab === "osm") openOsmTab();
+        if (btn.dataset.tab === "verificaciones") openVerificacionesTab();
       });
     });
   }
@@ -906,6 +911,7 @@
       (p._obsLista === false ? "…" : escapeHtml(getObservacion(p)) || "—") +
       "</div>" +
       "</div>" +
+      '<div class="verif-host"></div>' +
       '<div class="result-links">' +
       '<button class="btn btn-secondary sp-btn-buscar">🔍 Buscar en el sistema</button>' +
       '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
@@ -917,9 +923,12 @@
       "</div>";
     box.querySelector(".sp-btn-buscar").addEventListener("click", () => jumpToBuscador(p));
     box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    if (p._obsLista !== false) renderVerifControls(box.querySelector(".verif-host"), p);
     if (p._obsLista === false) {
       cargarObservacion(p)
         .then(() => {
+          const vh = box.querySelector(".verif-host");
+          if (vh && !box.hidden) renderVerifControls(vh, p);
           const el = box.querySelector(".sp-obs");
           if (el && !box.hidden) el.innerHTML = "<b>Observación</b>" + (escapeHtml(getObservacion(p)) || "—");
         })
@@ -1198,12 +1207,14 @@
         '<a class="btn btn-maps" target="_blank" rel="noopener" href="' + googleMapsUrl(p) + '">Ver en Google Maps</a>' +
         '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' + googleSearchUrl(p) + '">Buscar en Google</a>' +
         "</div>" +
+        '<div class="verif-host"></div>' +
         '<div class="obs-row">' +
         '<textarea placeholder="Observación…">' + escapeHtml(getObservacion(p)) + "</textarea>" +
         '<button class="btn btn-secondary btn-guardar-obs">Guardar</button>' +
         "</div>" +
         '<div class="obs-saved-note"></div>';
 
+      renderVerifControls(card.querySelector(".verif-host"), p);
       const textarea = card.querySelector("textarea");
       const saveBtn = card.querySelector(".btn-guardar-obs");
       const note = card.querySelector(".obs-saved-note");
@@ -1559,6 +1570,172 @@
     return fetch(SYNC_WEBHOOK, { method: "POST", mode: "no-cors", headers: { "Content-Type": "text/plain" }, body: "{}" });
   }
 
+
+  // ---------------------------------------------------------------
+  // Verificaciones: Verificado / Contactado / WhatsApp por persona (se guarda en la base al instante)
+  // ---------------------------------------------------------------
+  async function saveVerif(p, args) {
+    const data = await window.NexusAuth.rpc("nx_verificacion", Object.assign({ p_codigo: String(p.Codigo) }, args));
+    if (!data.ok) throw new Error(data.error || "No se pudo guardar");
+    if ("p_verificado" in args) p.Verificado = args.p_verificado;
+    if ("p_contactado" in args) p.Contactado = args.p_contactado;
+    if ("p_whatsapp" in args) p.WhatsApp = args.p_whatsapp;
+  }
+
+  function waLink(num) {
+    const d = String(num || "").replace(/\D/g, "");
+    return d.length >= 8 ? "https://wa.me/" + d : "";
+  }
+
+  function renderVerifControls(host, p, onSaved) {
+    if (!host) return;
+    host.innerHTML =
+      '<div class="verif-row">' +
+      '<label class="verif-field"><span>Verificación</span><select class="verif-sel" data-k="ver">' +
+      '<option value="no">Sin verificar</option><option value="si">Verificado</option></select></label>' +
+      '<label class="verif-field"><span>Contacto</span><select class="verif-sel" data-k="con">' +
+      '<option value="no">Sin contactar</option><option value="si">Contactado</option></select></label>' +
+      '<label class="verif-field verif-field--wsp"><span>WhatsApp</span><span class="verif-wsp-row">' +
+      '<input class="verif-wsp" type="tel" inputmode="tel" maxlength="30" placeholder="+54 9 388 …" autocomplete="off">' +
+      '<button type="button" class="btn btn-secondary verif-wsp-save">Guardar</button>' +
+      '<a class="btn btn-secondary verif-wsp-open" target="_blank" rel="noopener" hidden>Abrir</a></span></label>' +
+      "</div>" +
+      '<div class="verif-note" role="status"></div>';
+    const selV = host.querySelector('[data-k="ver"]');
+    const selC = host.querySelector('[data-k="con"]');
+    const wsp = host.querySelector(".verif-wsp");
+    const wspBtn = host.querySelector(".verif-wsp-save");
+    const wspOpen = host.querySelector(".verif-wsp-open");
+    const note = host.querySelector(".verif-note");
+    selV.value = p.Verificado ? "si" : "no";
+    selC.value = p.Contactado ? "si" : "no";
+    wsp.value = p.WhatsApp || "";
+    const paint = () => {
+      selV.classList.toggle("is-on", selV.value === "si");
+      selC.classList.toggle("is-on", selC.value === "si");
+      const l = waLink(p.WhatsApp);
+      wspOpen.hidden = !l;
+      if (l) wspOpen.href = l;
+    };
+    paint();
+    let noteTimer;
+    const say = (msg, err) => {
+      note.textContent = msg;
+      note.classList.toggle("is-error", !!err);
+      note.classList.add("show");
+      clearTimeout(noteTimer);
+      noteTimer = setTimeout(() => note.classList.remove("show"), 2500);
+    };
+    async function guardar(args, sel, anterior) {
+      if (sel) sel.disabled = true;
+      wspBtn.disabled = true;
+      try {
+        await saveVerif(p, args);
+        say("Guardado.");
+        if (onSaved) onSaved(p);
+      } catch (e) {
+        if (sel) sel.value = anterior;
+        say("Error al guardar: " + e.message, true);
+      } finally {
+        if (sel) sel.disabled = false;
+        wspBtn.disabled = false;
+        paint();
+      }
+    }
+    selV.addEventListener("change", () => guardar({ p_verificado: selV.value === "si" }, selV, selV.value === "si" ? "no" : "si"));
+    selC.addEventListener("change", () => guardar({ p_contactado: selC.value === "si" }, selC, selC.value === "si" ? "no" : "si"));
+    const guardarWsp = () => {
+      if (wsp.value.trim() === (p.WhatsApp || "")) return;
+      guardar({ p_whatsapp: wsp.value.trim() }, null);
+    };
+    wspBtn.addEventListener("click", guardarWsp);
+    wsp.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        guardarWsp();
+      }
+    });
+  }
+
+  const VERIF = { after: 0, seq: 0, abierta: false };
+
+  async function cargarVerifResumen() {
+    try {
+      const r = await window.NexusAuth.rpc("nx_verif_resumen");
+      document.getElementById("vf-total").textContent = fmtN(r.total);
+      document.getElementById("vf-ver").textContent = fmtN(r.verificados);
+      document.getElementById("vf-con").textContent = fmtN(r.contactados);
+      document.getElementById("vf-wsp").textContent = fmtN(r.con_whatsapp);
+    } catch (e) {
+      /* el resumen es solo informativo */
+    }
+  }
+
+  async function cargarVerifLista(append) {
+    const wrap = document.getElementById("vf-results");
+    const moreBtn = document.getElementById("vf-more");
+    const my = ++VERIF.seq;
+    if (!append) {
+      VERIF.after = 0;
+      wrap.innerHTML = '<div class="empty-hint">Buscando…</div>';
+    }
+    moreBtn.hidden = true;
+    let res;
+    try {
+      res = await window.NexusAuth.rpc("nx_verif_lista", {
+        p_verif: document.getElementById("vf-verif").value,
+        p_cont: document.getElementById("vf-cont").value,
+        p_wsp: document.getElementById("vf-wsp-f").value,
+        p_q: document.getElementById("vf-q").value.trim(),
+        p_after: VERIF.after,
+        p_limit: 40,
+      });
+    } catch (e) {
+      if (my === VERIF.seq) wrap.innerHTML = '<div class="empty-hint">No se pudo cargar. Probá de nuevo.</div>';
+      return;
+    }
+    if (my !== VERIF.seq) return;
+    const rows = res.rows || [];
+    if (!append) wrap.innerHTML = "";
+    if (!rows.length && !append) {
+      wrap.innerHTML = '<div class="empty-hint">No hay personas con ese filtro.</div>';
+      return;
+    }
+    rows.forEach((p) => {
+      const card = document.createElement("div");
+      card.className = "result-card vf-card";
+      card.innerHTML =
+        '<div class="result-head"><div>' +
+        '<div class="result-name">' + escapeHtml(p.Apellido + " " + p.Nombre) + "</div>" +
+        '<div class="result-sub">' + escapeHtml(p.Codigo) + " · " + escapeHtml(p.Institucion || "") + " · " +
+        escapeHtml(cleanName(p.Departamento)) + "</div></div></div>" +
+        '<div class="verif-host"></div>';
+      renderVerifControls(card.querySelector(".verif-host"), p, cargarVerifResumen);
+      wrap.appendChild(card);
+    });
+    if (rows.length) VERIF.after = rows[rows.length - 1].row_number;
+    moreBtn.hidden = !res.more;
+  }
+
+  function setupVerificaciones() {
+    let t;
+    const recargar = () => cargarVerifLista(false);
+    ["vf-verif", "vf-cont", "vf-wsp-f"].forEach((id) => document.getElementById(id).addEventListener("change", recargar));
+    document.getElementById("vf-q").addEventListener("input", () => {
+      clearTimeout(t);
+      t = setTimeout(recargar, 350);
+    });
+    document.getElementById("vf-more").addEventListener("click", () => cargarVerifLista(true));
+  }
+
+  function openVerificacionesTab() {
+    cargarVerifResumen();
+    if (!VERIF.abierta) {
+      VERIF.abierta = true;
+      cargarVerifLista(false);
+    }
+  }
+
   // ---------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------
@@ -1577,6 +1754,7 @@
     populateDistritoSelect();
     renderInstGrid();
     setupBuscador();
+    setupVerificaciones();
     setupAdminSync();
     setupMapToggles();
     document.getElementById("btn-volver-instituciones").addEventListener("click", () => {
