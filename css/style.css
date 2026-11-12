@@ -553,3 +553,41 @@ main{max-width:1120px;margin:0 auto;padding:2.75rem 1.5rem 4rem;}
 .vf-filters{margin-top:1.25rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.75rem;}
 .vf-more{margin:1rem auto 0;display:block;}
 .vf-more[hidden],.verif-wsp-open[hidden]{display:none;}
+
+/* ---------- Búsqueda en la web (IA) ---------- */
+.web-host[hidden]{display:none;}
+.web-box{
+  margin-top:.9rem;padding:.9rem 1rem;border:1px solid var(--border);border-left:3px solid var(--accent);
+  border-radius:10px;background:var(--surface-2);font-size:.875rem;color:var(--ink);overflow-wrap:anywhere;
+}
+.web-box.is-loading{display:flex;align-items:center;gap:.6rem;color:var(--muted);}
+.web-box.is-error{border-left-color:var(--c-b);color:var(--t-b);font-weight:500;}
+.web-spinner{
+  width:1rem;height:1rem;flex:none;border-radius:50%;border:2px solid var(--border);border-top-color:var(--accent);
+  animation:web-spin .8s linear infinite;
+}
+@keyframes web-spin{to{transform:rotate(360deg);}}
+@media (prefers-reduced-motion:reduce){.web-spinner{animation-duration:2.4s;}}
+.web-head{display:flex;align-items:center;gap:.5rem .75rem;flex-wrap:wrap;margin-bottom:.5rem;}
+.web-head b{font-size:.95rem;}
+.web-date{color:var(--muted);font-size:.78rem;}
+.web-head .web-refresh{margin-left:auto;min-height:2rem;padding:.25rem .7rem;font-size:.78rem;}
+.web-resumen{margin:0 0 .6rem;}
+.web-vacio{margin:.2rem 0 .6rem;color:var(--muted);font-weight:500;}
+.web-list{list-style:none;margin:0 0 .7rem;padding:0;display:grid;gap:.55rem;}
+.web-list li{padding:.6rem .7rem;border:1px solid var(--border);border-radius:8px;background:var(--surface);}
+.web-conf{
+  display:inline-block;font-size:.7rem;font-weight:600;letter-spacing:.02em;padding:.1rem .5rem;border-radius:999px;
+  margin-bottom:.3rem;border:1px solid currentColor;
+}
+.web-conf--alta{color:var(--t-general);}
+.web-conf--media{color:var(--ochre);}
+.web-conf--baja{color:var(--muted);}
+.web-titulo{font-weight:600;}
+.web-detalle{margin-top:.15rem;}
+.web-sitio{margin-top:.25rem;font-size:.78rem;color:var(--muted);}
+.web-fuentes{display:flex;flex-direction:column;gap:.25rem;margin-bottom:.6rem;}
+.web-fuentes b{font-size:.78rem;font-weight:500;color:var(--muted);}
+.web-fuentes a{color:var(--accent);font-weight:500;}
+.web-sugerencias{width:100%;height:56px;border:0;border-radius:8px;background:transparent;margin-bottom:.5rem;}
+.web-nota{margin:0;font-size:.78rem;color:var(--muted);}

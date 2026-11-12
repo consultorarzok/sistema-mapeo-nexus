@@ -116,6 +116,115 @@
     return "https://www.google.com/search?q=" + encodeURIComponent(q);
   }
 
+  // ---------------------------------------------------------------
+  // Búsqueda en la web con IA (Gemini usando el buscador de Google).
+  // La clave de Gemini vive en el servidor, nunca en la página. La página solo manda el código
+  // de la persona: el servidor arma la búsqueda (número + nombre + apellido + localidad de Jujuy), así
+  // nadie puede usar el servicio para buscar otra cosa. El resultado queda guardado 30 días.
+  // ---------------------------------------------------------------
+  const WEB_WEBHOOK = "https://n8n.consultorarz.com/webhook/nexus-busqueda-web";
+  const WEB_ERRORES = {
+    tope: "Se llegó al tope de búsquedas de hoy. Mañana se habilita de nuevo.",
+    sin_persona: "No se encontró a esta persona en el padrón.",
+    sin_configurar: "La búsqueda con IA todavía no está activada.",
+    fallo: "El buscador no respondió. Probá de nuevo en un momento.",
+  };
+  const WEB_CONF = { alta: "Coincidencia alta", media: "Coincidencia media", baja: "Coincidencia baja" };
+
+  async function pedirBusquedaWeb(p, forzar) {
+    let res;
+    try {
+      res = await fetch(WEB_WEBHOOK, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ token: window.NexusAuth.getToken(), codigo: String(p.Codigo), forzar: !!forzar }),
+      });
+    } catch (e) {
+      throw new Error(WEB_ERRORES.fallo);
+    }
+    if (res.status === 404) throw new Error(WEB_ERRORES.sin_configurar);
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (e) {}
+    if (data && data.error === "unauthorized") {
+      window.NexusAuth.forceLogin();
+      throw new Error("La sesión venció. Volvé a entrar.");
+    }
+    if (!data || !data.ok) throw new Error(WEB_ERRORES[data && data.error] || WEB_ERRORES.fallo);
+    return data;
+  }
+
+  function urlSegura(u) {
+    return /^https?:\/\//i.test(String(u || "")) ? String(u) : "";
+  }
+
+  function webResultadoHtml(data) {
+    const r = data.resultado || {};
+    const coincidencias = Array.isArray(r.coincidencias) ? r.coincidencias : [];
+    const fuentes = (Array.isArray(r.fuentes) ? r.fuentes : []).filter((f) => urlSegura(f.url));
+    const fecha = r.fecha ? new Date(r.fecha) : null;
+    let h =
+      '<div class="web-head"><b>Búsqueda en la web</b>' +
+      (fecha && !isNaN(fecha) ? '<span class="web-date">Consultado el ' + fecha.toLocaleDateString("es-AR") + "</span>" : "") +
+      '<button type="button" class="btn btn-secondary web-refresh">Buscar de nuevo</button></div>';
+    if (r.resumen) h += '<p class="web-resumen">' + escapeHtml(r.resumen) + "</p>";
+    if (!coincidencias.length) {
+      h += '<p class="web-vacio">No se encontró información pública confiable sobre esta persona en Jujuy.</p>';
+    } else {
+      h += '<ul class="web-list">';
+      coincidencias.forEach((c) => {
+        const conf = WEB_CONF[c.confianza] ? c.confianza : "baja";
+        h +=
+          "<li>" +
+          '<span class="web-conf web-conf--' + conf + '">' + WEB_CONF[conf] + "</span>" +
+          '<div class="web-titulo">' + escapeHtml(c.titulo || "") + "</div>" +
+          '<div class="web-detalle">' + escapeHtml(c.detalle || "") + "</div>" +
+          (c.sitio ? '<div class="web-sitio">Fuente: ' + escapeHtml(c.sitio) + "</div>" : "") +
+          "</li>";
+      });
+      h += "</ul>";
+    }
+    if (fuentes.length) {
+      h += '<div class="web-fuentes"><b>Páginas que leyó el buscador</b>';
+      fuentes.forEach((f) => {
+        h += '<a target="_blank" rel="noopener noreferrer" href="' + escapeHtml(urlSegura(f.url)) + '">' + escapeHtml(f.titulo || f.url) + "</a>";
+      });
+      h += "</div>";
+    }
+    if (r.sugerencias_html) h += '<iframe class="web-sugerencias" title="Búsquedas de Google relacionadas" sandbox="allow-popups allow-popups-to-escape-sandbox"></iframe>';
+    h += '<p class="web-nota">Resultado automático. Puede tratarse de otra persona con el mismo nombre: abrí la fuente antes de darlo por cierto.</p>';
+    return h;
+  }
+
+  // Conecta el botón "Buscar en la web (IA)" de una ficha con su recuadro de resultados
+  function conectarBusquedaWeb(cont, p) {
+    const btn = cont.querySelector(".btn-web");
+    const host = cont.querySelector(".web-host");
+    if (!btn || !host) return;
+    async function buscar(forzar) {
+      btn.disabled = true;
+      host.hidden = false;
+      host.className = "web-host web-box is-loading";
+      host.innerHTML = '<span class="web-spinner" aria-hidden="true"></span>Buscando en la web… puede tardar hasta medio minuto.';
+      try {
+        const data = await pedirBusquedaWeb(p, forzar);
+        host.className = "web-host web-box";
+        host.innerHTML = webResultadoHtml(data);
+        const fr = host.querySelector(".web-sugerencias");
+        if (fr) fr.srcdoc = String(data.resultado.sugerencias_html);
+        const again = host.querySelector(".web-refresh");
+        if (again) again.addEventListener("click", () => buscar(true));
+      } catch (e) {
+        host.className = "web-host web-box is-error";
+        host.textContent = e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+    btn.addEventListener("click", () => buscar(false));
+  }
+
   // Búsqueda interna: lleva a la pestaña Buscador con el texto cargado
   function jumpToBuscadorQuery(texto) {
     const tabBtn = document.querySelector('.tab-btn[data-tab="buscador"]');
@@ -917,11 +1026,14 @@
       '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' +
       googleSearchUrl(p) +
       '">Buscar en Google</a>' +
+      '<button type="button" class="btn btn-secondary btn-web">Buscar en la web (IA)</button>' +
       '<a class="btn btn-maps" target="_blank" rel="noopener" href="' +
       googleMapsUrl(p) +
       '">Cómo llegar</a>' +
-      "</div>";
+      "</div>" +
+      '<div class="web-host" hidden></div>';
     box.querySelector(".sp-btn-buscar").addEventListener("click", () => jumpToBuscador(p));
+    conectarBusquedaWeb(box, p);
     box.scrollIntoView({ behavior: "smooth", block: "nearest" });
     if (p._obsLista !== false) renderVerifControls(box.querySelector(".verif-host"), p);
     if (p._obsLista === false) {
@@ -1206,7 +1318,9 @@
         '<div class="result-links">' +
         '<a class="btn btn-maps" target="_blank" rel="noopener" href="' + googleMapsUrl(p) + '">Ver en Google Maps</a>' +
         '<a class="btn btn-secondary" target="_blank" rel="noopener" href="' + googleSearchUrl(p) + '">Buscar en Google</a>' +
+        '<button type="button" class="btn btn-secondary btn-web">Buscar en la web (IA)</button>' +
         "</div>" +
+        '<div class="web-host" hidden></div>' +
         '<div class="verif-host"></div>' +
         '<div class="obs-row">' +
         '<textarea placeholder="Observación…">' + escapeHtml(getObservacion(p)) + "</textarea>" +
@@ -1215,6 +1329,7 @@
         '<div class="obs-saved-note"></div>';
 
       renderVerifControls(card.querySelector(".verif-host"), p);
+      conectarBusquedaWeb(card, p);
       const textarea = card.querySelector("textarea");
       const saveBtn = card.querySelector(".btn-guardar-obs");
       const note = card.querySelector(".obs-saved-note");
