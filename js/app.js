@@ -159,6 +159,23 @@
     return /^https?:\/\//i.test(String(u || "")) ? String(u) : "";
   }
 
+  // Fuente de cada coincidencia con el enlace para abrirla y verificar.
+  // Los resultados guardados antes de agregar el enlace lo buscan por el nombre del sitio.
+  function webFuenteHtml(c, fuentes) {
+    let u = urlSegura(c.url);
+    if (!u && c.sitio) {
+      const f = fuentes.find((x) => String(x.url).toLowerCase().indexOf(String(c.sitio).toLowerCase()) !== -1);
+      if (f) u = urlSegura(f.url);
+    }
+    if (u) {
+      return (
+        '<div class="web-sitio">Fuente: <a class="web-link" target="_blank" rel="noopener noreferrer" href="' +
+        escapeHtml(u) + '">' + escapeHtml(c.sitio || u) + " ↗ Abrir y verificar</a></div>"
+      );
+    }
+    return c.sitio ? '<div class="web-sitio">Fuente: ' + escapeHtml(c.sitio) + "</div>" : "";
+  }
+
   function webResultadoHtml(data) {
     const r = data.resultado || {};
     const coincidencias = Array.isArray(r.coincidencias) ? r.coincidencias : [];
@@ -180,7 +197,7 @@
           '<span class="web-conf web-conf--' + conf + '">' + WEB_CONF[conf] + "</span>" +
           '<div class="web-titulo">' + escapeHtml(c.titulo || "") + "</div>" +
           '<div class="web-detalle">' + escapeHtml(c.detalle || "") + "</div>" +
-          (c.sitio ? '<div class="web-sitio">Fuente: ' + escapeHtml(c.sitio) + "</div>" : "") +
+          webFuenteHtml(c, fuentes) +
           "</li>";
       });
       h += "</ul>";

@@ -586,6 +586,7 @@ main{max-width:1120px;margin:0 auto;padding:2.75rem 1.5rem 4rem;}
 .web-titulo{font-weight:600;}
 .web-detalle{margin-top:.15rem;}
 .web-sitio{margin-top:.25rem;font-size:.78rem;color:var(--muted);}
+.web-sitio .web-link{color:var(--accent);font-weight:600;text-decoration:underline;overflow-wrap:anywhere;}
 .web-fuentes{display:flex;flex-direction:column;gap:.25rem;margin-bottom:.6rem;}
 .web-fuentes b{font-size:.78rem;font-weight:500;color:var(--muted);}
 .web-fuentes a{color:var(--accent);font-weight:500;}
