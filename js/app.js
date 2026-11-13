@@ -202,7 +202,9 @@
       });
       h += "</ul>";
     }
-    if (fuentes.length) {
+    // La lista de todas las páginas leídas se oculta: mezclaba páginas de otras personas.
+    // Cada coincidencia ya trae su propio enlace de fuente.
+    if (false && fuentes.length) {
       h += '<div class="web-fuentes"><b>Páginas que leyó el buscador</b>';
       fuentes.forEach((f) => {
         h += '<a target="_blank" rel="noopener noreferrer" href="' + escapeHtml(urlSegura(f.url)) + '">' + escapeHtml(f.titulo || f.url) + "</a>";
