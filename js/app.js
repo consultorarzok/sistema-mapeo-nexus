@@ -269,6 +269,39 @@
     const data = await window.NexusAuth.rpc("nx_resumen");
     applyData(data);
     window.dispatchEvent(new CustomEvent("nexus:data-ready"));
+    cargarUsoMes();
+  }
+
+  // Contador de uso mensual: búsquedas con IA y cargas del mapa de Google contra el tope incluido en la cuota.
+  // Al llegar al 80% avisa; al pasar el tope sigue funcionando (el excedente lo asume el cliente).
+  async function cargarUsoMes() {
+    try {
+      const u = await window.NexusAuth.rpc("nx_uso");
+      const fmt = (n) => Number(n).toLocaleString("es-AR");
+      const filas = [
+        ["ia", "búsquedas con IA", u.ia],
+        ["mapa", "cargas del mapa", u.mapa],
+      ];
+      const avisos = [];
+      filas.forEach(([k, nombre, x]) => {
+        const pct = x.tope > 0 ? (x.usado / x.tope) * 100 : 0;
+        document.getElementById("uso-" + k + "-num").textContent = fmt(x.usado) + " de " + fmt(x.tope) + " (" + Math.round(pct) + "%)";
+        const bar = document.getElementById("uso-" + k + "-bar");
+        bar.style.width = Math.min(100, pct) + "%";
+        bar.className = pct >= 100 ? "is-over" : pct >= 80 ? "is-warn" : "";
+        if (pct >= 100) avisos.push("Se superó el tope mensual de " + nombre + ": el excedente se factura aparte.");
+        else if (pct >= 80) avisos.push("Se usó el " + Math.round(pct) + "% del tope mensual de " + nombre + ".");
+      });
+      const [anio, mes] = String(u.mes).split("-");
+      const meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+      document.getElementById("uso-lede").textContent = "Uso de " + meses[Number(mes) - 1] + " " + anio + " frente a lo incluido en la cuota mensual. Se reinicia cada mes.";
+      const av = document.getElementById("uso-aviso");
+      av.hidden = avisos.length === 0;
+      av.textContent = avisos.join(" ");
+      document.getElementById("uso-card").hidden = false;
+    } catch (e) {
+      /* el contador es informativo: si falla, no molesta */
+    }
   }
 
   // Sincronización automática con la planilla (n8n): hora de la última y aviso si quedó frenada
@@ -1010,6 +1043,8 @@
   // ---------------------------------------------------------------
   function ensureMap() {
     if (STATE.map) return STATE.map;
+    // cada vez que se abre el mapa de Google en esta sesión cuenta como una carga
+    window.NexusAuth.rpc("nx_uso_mapa").catch(() => {});
     STATE.map = new google.maps.Map(document.getElementById("map-canvas"), {
       center: { lat: -23.9, lng: -65.45 }, // Jujuy
       zoom: 9,

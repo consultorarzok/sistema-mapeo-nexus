@@ -19,7 +19,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
-<link rel="stylesheet" href="css/style.css?v=202611131500">
+<link rel="stylesheet" href="css/style.css?v=202611131800">
 </head>
 <body>
 
@@ -112,6 +112,20 @@
         <span class="stat-label">Distritos</span>
         <span class="stat-number" id="stat-distritos">0</span>
       </button>
+    </div>
+
+    <h2 class="inicio-sec">Uso del mes</h2>
+    <div class="uso-card" id="uso-card" hidden>
+      <p class="uso-lede" id="uso-lede"></p>
+      <div class="uso-row" id="uso-row-ia">
+        <div class="uso-top"><span class="uso-name">Búsquedas con IA</span><span class="uso-num" id="uso-ia-num"></span></div>
+        <div class="uso-bar"><span id="uso-ia-bar"></span></div>
+      </div>
+      <div class="uso-row" id="uso-row-mapa">
+        <div class="uso-top"><span class="uso-name">Cargas del mapa de Google</span><span class="uso-num" id="uso-mapa-num"></span></div>
+        <div class="uso-bar"><span id="uso-mapa-bar"></span></div>
+      </div>
+      <p class="uso-aviso" id="uso-aviso" hidden></p>
     </div>
 
     <h2 class="inicio-sec">Por departamento</h2>
@@ -271,8 +285,8 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBY57W1544aRhbxLiesSlUnnheRuD_3spQ&v=weekly&loading=async"></script>
-<script src="js/auth.js?v=202611131500"></script>
-<script src="js/theme.js?v=202611131500"></script>
-<script src="js/app.js?v=202611131500"></script>
+<script src="js/auth.js?v=202611131800"></script>
+<script src="js/theme.js?v=202611131800"></script>
+<script src="js/app.js?v=202611131800"></script>
 </body>
 </html>
