@@ -117,8 +117,8 @@
   }
 
   // ---------------------------------------------------------------
-  // Búsqueda en la web con IA (Gemini usando el buscador de Google).
-  // La clave de Gemini vive en el servidor, nunca en la página. La página solo manda el código
+  // Búsqueda en la web con IA (OpenAI con búsqueda web, corre en el servidor).
+  // La clave de la IA vive en el servidor, nunca en la página. La página solo manda el código
   // de la persona: el servidor arma la búsqueda (número + nombre + apellido + localidad de Jujuy), así
   // nadie puede usar el servicio para buscar otra cosa. El resultado queda guardado 30 días.
   // ---------------------------------------------------------------
@@ -470,7 +470,7 @@
     });
   }
 
-  // Desde el Inicio: abre la pestaña Mapa (opcionalmente con un departamento elegido)
+  // Desde el Inicio: abre la pestaña Mapa por institución (opcionalmente con un departamento elegido)
   function gotoMapaDepto(depto) {
     document.querySelector('.tab-btn[data-tab="mapa"]').click();
     const sel = document.getElementById("sel-depto");
