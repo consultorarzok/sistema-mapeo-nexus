@@ -323,6 +323,10 @@ main{max-width:1120px;margin:0 auto;padding:2.75rem 1.5rem 4rem;}
 .filter-bar{display:flex;gap:1rem;flex-wrap:wrap;margin-top:1.25rem;}
 .filter-bar .field{flex:1 1 220px;}
 
+.inst-grid[hidden]{display:none;}
+.btn-volver-lista{margin-top:1.2rem;width:100%;font-weight:600;}
+.btn-volver-lista[hidden]{display:none;}
+.excel-estado{margin:.5rem 0 0;font-size:.8rem;color:var(--muted);}
 .inst-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.6rem;margin-top:1.5rem;}
 .inst-card{
   display:flex;align-items:center;gap:.8rem;cursor:pointer;

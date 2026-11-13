@@ -713,6 +713,19 @@
     });
   }
 
+  // Al entrar a una institución se oculta la lista de todas y aparece arriba el botón para volver.
+  function listaVisible(visible) {
+    document.getElementById("inst-grid").hidden = !visible;
+    document.getElementById("btn-volver-lista").hidden = visible;
+  }
+
+  // Vuelve a ver todas las instituciones (lista + mapa) y cierra la ficha de la elegida.
+  function volverATodas() {
+    exitPersonMode();
+    clearDetail();
+    renderInstGrid();
+  }
+
   function clearDetail() {
     STATE.selectedInstId = null;
     document.getElementById("inst-detail").hidden = true;
@@ -732,8 +745,153 @@
       "</div>" +
       '<div class="result-links">' +
       '<a class="btn btn-maps" target="_blank" rel="noopener" href="' + googleMapsUrlInstitucion(inst) + '">Cómo llegar</a>' +
+      '<button type="button" class="btn btn-secondary btn-excel">⬇ Descargar Excel (grupos de 200 por cercanía)</button>' +
       "</div>" +
+      '<p class="excel-estado" hidden></p>' +
       '<p class="planilla-auto-note">Sus personas están en el mapa: con las casillas de arriba del mapa elegís Planilla General, Planilla B y el rango de alcance. Para buscar a alguien, usá el Buscador.</p>';
+    const bx = detail.querySelector(".btn-excel");
+    if (bx) bx.addEventListener("click", () => descargarExcel(inst, bx, detail.querySelector(".excel-estado")));
+  }
+
+  // ---------------------------------------------------------------
+  // Excel: Planilla General de una institución dividida en grupos de hasta 200 personas por cercanía.
+  // Usa las ubicaciones que ya están guardadas (exactas o aproximadas); no consulta nada a Google.
+  // ---------------------------------------------------------------
+  const GRUPO_PERSONAS = 200;
+  let xlsxPromise = null;
+
+  function cargarXlsx() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (!xlsxPromise) {
+      xlsxPromise = new Promise((ok, mal) => {
+        const sc = document.createElement("script");
+        sc.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+        sc.onload = () => ok(window.XLSX);
+        sc.onerror = () => { xlsxPromise = null; mal(new Error("No se pudo cargar el generador de Excel")); };
+        document.head.appendChild(sc);
+      });
+    }
+    return xlsxPromise;
+  }
+
+  // Parte los puntos en k grupos del mismo tamaño y juntos en el mapa: corta una y otra vez por la
+  // dirección en que están más dispersos (norte-sur o este-oeste).
+  function dividirPorCercania(pts, k) {
+    if (k <= 1 || pts.length <= 1) return [pts];
+    let minLa = Infinity, maxLa = -Infinity, minLo = Infinity, maxLo = -Infinity;
+    for (const q of pts) {
+      if (q.lat < minLa) minLa = q.lat;
+      if (q.lat > maxLa) maxLa = q.lat;
+      if (q.lng < minLo) minLo = q.lng;
+      if (q.lng > maxLo) maxLo = q.lng;
+    }
+    const porLat = maxLa - minLa >= (maxLo - minLo) * 0.91; // 1° de longitud mide ~0,91 de uno de latitud en Jujuy
+    const orden = pts.slice().sort((a, b) => (porLat ? a.lat - b.lat : a.lng - b.lng));
+    const kIzq = Math.floor(k / 2);
+    const corte = Math.round((orden.length * kIzq) / k);
+    return dividirPorCercania(orden.slice(0, corte), kIzq).concat(dividirPorCercania(orden.slice(corte), k - kIzq));
+  }
+
+  // Dentro de cada grupo: recorrido del más al norte siguiendo siempre al más cercano.
+  function ordenarRecorrido(g) {
+    if (g.length < 3) return g;
+    const resto = g.slice();
+    let i0 = 0;
+    for (let i = 1; i < resto.length; i++) if (resto[i].lat > resto[i0].lat) i0 = i;
+    const res = [resto.splice(i0, 1)[0]];
+    while (resto.length) {
+      const a = res[res.length - 1];
+      let mejor = 0, dMejor = Infinity;
+      for (let i = 0; i < resto.length; i++) {
+        const dy = resto[i].lat - a.lat, dx = (resto[i].lng - a.lng) * 0.91;
+        const d = dy * dy + dx * dx;
+        if (d < dMejor) { dMejor = d; mejor = i; }
+      }
+      res.push(resto.splice(mejor, 1)[0]);
+    }
+    return res;
+  }
+
+  // Todas las personas de la institución (también las de ubicación aproximada y las sin ubicar).
+  async function cargarTodasParaExcel(inst, avisar) {
+    const lista = [];
+    let desde = 0, quedan = true;
+    while (quedan) {
+      const r = await window.NexusAuth.rpc("nx_personas_lite", { p_inst: inst.id, p_desde: desde, p_limit: TANDA_PERSONAS, p_solo_exactas: false });
+      for (const a of r.items) lista.push(personaDeFila(inst, a));
+      desde = r.last;
+      quedan = r.more;
+      avisar("Preparando el Excel… " + fmtN(lista.length) + " personas leídas");
+    }
+    return lista;
+  }
+
+  function linkMapaPersona(p) {
+    if (!p._aprox && p.Latitud != null && p.Longitud != null) {
+      return "https://www.google.com/maps/search/?api=1&query=" + p.Latitud + "," + p.Longitud;
+    }
+    return googleMapsUrl(p);
+  }
+
+  async function descargarExcel(inst, btn, estado) {
+    const avisar = (t) => { estado.hidden = false; estado.textContent = t; };
+    btn.disabled = true;
+    try {
+      avisar("Preparando el Excel…");
+      const [XLSX, personas] = await Promise.all([cargarXlsx(), cargarTodasParaExcel(inst, avisar)]);
+      if (!personas.length) { avisar("Esta institución no tiene personas cargadas."); return; }
+
+      const conUbic = [], sinUbic = [];
+      for (const p of personas) {
+        const la = Number(p.Latitud), lo = Number(p.Longitud);
+        if (p.Latitud != null && p.Longitud != null && isFinite(la) && isFinite(lo)) conUbic.push({ p, lat: la, lng: lo });
+        else sinUbic.push({ p });
+      }
+      const grupos = [];
+      if (conUbic.length) {
+        const k = Math.ceil(conUbic.length / GRUPO_PERSONAS);
+        dividirPorCercania(conUbic, k).forEach((g) => grupos.push({ tipo: "ubicadas", items: ordenarRecorrido(g) }));
+      }
+      sinUbic.sort((a, b) => (a.p.Direccion + " " + a.p.Numero).localeCompare(b.p.Direccion + " " + b.p.Numero, "es"));
+      for (let i = 0; i < sinUbic.length; i += GRUPO_PERSONAS) grupos.push({ tipo: "sin", items: sinUbic.slice(i, i + GRUPO_PERSONAS) });
+
+      const cab = ["Grupo", "N°", "Código", "Apellido", "Nombre", "Dirección", "Número", "Departamento", "Distrito", "Institución", "Ubicación", "Latitud", "Longitud", "En Planilla B", "Ver en Google Maps"];
+      const anchos = [10, 5, 11, 20, 24, 28, 8, 22, 22, 28, 12, 11, 11, 12, 48];
+      const wb = XLSX.utils.book_new();
+      const resumen = [["Planilla General · " + inst.nombre], ["Dirección: " + (inst.dir || "—")], ["Personas: " + personas.length + " · en grupos de hasta " + GRUPO_PERSONAS + ", ordenados por cercanía"], [], ["Grupo", "Personas", "Zona (lat, lng)", "Ver en Google Maps"]];
+      let nSin = 0, nUb = 0;
+      grupos.forEach((g) => {
+        const nombre = g.tipo === "sin" ? "Sin ubicar " + String(++nSin).padStart(2, "0") : "Grupo " + String(++nUb).padStart(2, "0");
+        let centro = "", link = "";
+        if (g.tipo === "ubicadas") {
+          const la = g.items.reduce((t, x) => t + x.lat, 0) / g.items.length, lo = g.items.reduce((t, x) => t + x.lng, 0) / g.items.length;
+          centro = la.toFixed(5) + ", " + lo.toFixed(5);
+          link = "https://www.google.com/maps/search/?api=1&query=" + la.toFixed(6) + "," + lo.toFixed(6);
+        }
+        resumen.push([nombre, g.items.length, centro || "Sin ubicación en el mapa", link]);
+        const filas = [cab];
+        g.items.forEach((x, i) => {
+          const p = x.p;
+          filas.push([nombre, i + 1, p.Codigo, p.Apellido, p.Nombre, p.Direccion, p.Numero, cleanName(p.Departamento), cleanName(p.Distrito), p.Institucion,
+            g.tipo === "sin" ? "Sin ubicar" : p._aprox ? "Aproximada" : "Exacta", g.tipo === "sin" ? "" : x.lat, g.tipo === "sin" ? "" : x.lng, p._enB ? "Sí" : "No", linkMapaPersona(p)]);
+        });
+        const ws = XLSX.utils.aoa_to_sheet(filas);
+        ws["!cols"] = anchos.map((w) => ({ wch: w }));
+        XLSX.utils.book_append_sheet(wb, ws, nombre);
+      });
+      const wsR = XLSX.utils.aoa_to_sheet(resumen);
+      wsR["!cols"] = [{ wch: 16 }, { wch: 10 }, { wch: 26 }, { wch: 60 }];
+      wb.SheetNames.unshift("Resumen");
+      wb.Sheets["Resumen"] = wsR;
+
+      const limpio = String(inst.nombre).replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+      XLSX.writeFile(wb, "Planilla General - " + limpio + " - grupos de " + GRUPO_PERSONAS + ".xlsx");
+      avisar("Listo: " + fmtN(personas.length) + " personas en " + grupos.length + " grupo(s)" + (sinUbic.length ? " (" + fmtN(sinUbic.length) + " sin ubicación en el mapa, al final)" : "") + ".");
+    } catch (e) {
+      avisar("No se pudo armar el Excel. Probá de nuevo en un momento.");
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   // Las personas de una institución llegan por tandas livianas (no todas juntas): la primera se dibuja
@@ -1128,6 +1286,7 @@
     STATE.focus = null;
     setPersonToggles(false);
     document.getElementById("btn-volver-instituciones").hidden = true;
+    listaVisible(true);
     hideSelectedPersonCard();
 
     const map = ensureMap();
@@ -1185,6 +1344,7 @@
     const incremental = !!(soloNuevas && STATE.focus.stats);
     STATE.mapMode = "personas";
     document.getElementById("btn-volver-instituciones").hidden = false;
+    listaVisible(false);
     if (!incremental) hideSelectedPersonCard();
 
     const map = ensureMap();
@@ -1262,6 +1422,7 @@
     STATE.personLayer.clear();
     clearMarkers(STATE.reachCircles);
     document.getElementById("btn-volver-instituciones").hidden = true;
+    listaVisible(true);
     hideSelectedPersonCard();
     const map = ensureMap();
     const bounds = populateInstitutionLayer();
@@ -1891,9 +2052,8 @@
     setupVerificaciones();
     setupAdminSync();
     setupMapToggles();
-    document.getElementById("btn-volver-instituciones").addEventListener("click", () => {
-      exitPersonMode();
-    });
+    document.getElementById("btn-volver-instituciones").addEventListener("click", volverATodas);
+    document.getElementById("btn-volver-lista").addEventListener("click", volverATodas);
     const logoutBtn = document.getElementById("logout-btn");
     if (logoutBtn) logoutBtn.addEventListener("click", () => window.NexusAuth.logout());
     startAutoRefresh();
