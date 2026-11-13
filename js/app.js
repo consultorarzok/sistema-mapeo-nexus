@@ -750,7 +750,10 @@
       '<p class="excel-estado" hidden></p>' +
       '<p class="planilla-auto-note">Sus personas están en el mapa: con las casillas de arriba del mapa elegís Planilla General, Planilla B y el rango de alcance. Para buscar a alguien, usá el Buscador.</p>';
     const bx = detail.querySelector(".btn-excel");
-    if (bx) bx.addEventListener("click", () => descargarExcel(inst, bx, detail.querySelector(".excel-estado")));
+    if (bx) bx.addEventListener("click", () => {
+      const est = detail.querySelector(".excel-estado");
+      descargarExcel(inst, bx, est).catch((e) => { if (est) { est.hidden = false; est.textContent = "No se pudo armar el Excel (" + (e && e.message ? e.message : "error") + ")."; } });
+    });
   }
 
   // ---------------------------------------------------------------
@@ -765,7 +768,7 @@
     if (!xlsxPromise) {
       xlsxPromise = new Promise((ok, mal) => {
         const sc = document.createElement("script");
-        sc.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+        sc.src = "js/vendor/xlsx.full.min.js?v=0185";
         sc.onload = () => ok(window.XLSX);
         sc.onerror = () => { xlsxPromise = null; mal(new Error("No se pudo cargar el generador de Excel")); };
         document.head.appendChild(sc);
@@ -833,12 +836,23 @@
     return googleMapsUrl(p);
   }
 
+  function descargarArchivo(blob, nombre) {
+    if (window.navigator && window.navigator.msSaveOrOpenBlob) { window.navigator.msSaveOrOpenBlob(blob, nombre); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nombre;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 4000);
+  }
+
   async function descargarExcel(inst, btn, estado) {
-    const avisar = (t) => { estado.hidden = false; estado.textContent = t; };
+    const avisar = (t) => { if (estado) { estado.hidden = false; estado.textContent = t; } };
     btn.disabled = true;
+    avisar("Preparando el Excel…");
     try {
-      avisar("Preparando el Excel…");
-      const [XLSX, personas] = await Promise.all([cargarXlsx(), cargarTodasParaExcel(inst, avisar)]);
+      const personas = await cargarTodasParaExcel(inst, avisar);
       if (!personas.length) { avisar("Esta institución no tiene personas cargadas."); return; }
 
       const conUbic = [], sinUbic = [];
@@ -857,8 +871,8 @@
 
       const cab = ["Grupo", "N°", "Código", "Apellido", "Nombre", "Dirección", "Número", "Departamento", "Distrito", "Institución", "Ubicación", "Latitud", "Longitud", "En Planilla B", "Ver en Google Maps"];
       const anchos = [10, 5, 11, 20, 24, 28, 8, 22, 22, 28, 12, 11, 11, 12, 48];
-      const wb = XLSX.utils.book_new();
       const resumen = [["Planilla General · " + inst.nombre], ["Dirección: " + (inst.dir || "—")], ["Personas: " + personas.length + " · en grupos de hasta " + GRUPO_PERSONAS + ", ordenados por cercanía"], [], ["Grupo", "Personas", "Zona (lat, lng)", "Ver en Google Maps"]];
+      const hojas = [];
       let nSin = 0, nUb = 0;
       grupos.forEach((g) => {
         const nombre = g.tipo === "sin" ? "Sin ubicar " + String(++nSin).padStart(2, "0") : "Grupo " + String(++nUb).padStart(2, "0");
@@ -869,26 +883,43 @@
           link = "https://www.google.com/maps/search/?api=1&query=" + la.toFixed(6) + "," + lo.toFixed(6);
         }
         resumen.push([nombre, g.items.length, centro || "Sin ubicación en el mapa", link]);
-        const filas = [cab];
-        g.items.forEach((x, i) => {
+        const filas = g.items.map((x, i) => {
           const p = x.p;
-          filas.push([nombre, i + 1, p.Codigo, p.Apellido, p.Nombre, p.Direccion, p.Numero, cleanName(p.Departamento), cleanName(p.Distrito), p.Institucion,
-            g.tipo === "sin" ? "Sin ubicar" : p._aprox ? "Aproximada" : "Exacta", g.tipo === "sin" ? "" : x.lat, g.tipo === "sin" ? "" : x.lng, p._enB ? "Sí" : "No", linkMapaPersona(p)]);
+          return [nombre, i + 1, p.Codigo, p.Apellido, p.Nombre, p.Direccion, p.Numero, cleanName(p.Departamento), cleanName(p.Distrito), p.Institucion,
+            g.tipo === "sin" ? "Sin ubicar" : p._aprox ? "Aproximada" : "Exacta", g.tipo === "sin" ? "" : x.lat, g.tipo === "sin" ? "" : x.lng, p._enB ? "Sí" : "No", linkMapaPersona(p)];
         });
-        const ws = XLSX.utils.aoa_to_sheet(filas);
-        ws["!cols"] = anchos.map((w) => ({ wch: w }));
-        XLSX.utils.book_append_sheet(wb, ws, nombre);
+        hojas.push({ nombre, filas });
       });
-      const wsR = XLSX.utils.aoa_to_sheet(resumen);
-      wsR["!cols"] = [{ wch: 16 }, { wch: 10 }, { wch: 26 }, { wch: 60 }];
-      wb.SheetNames.unshift("Resumen");
-      wb.Sheets["Resumen"] = wsR;
 
       const limpio = String(inst.nombre).replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
-      XLSX.writeFile(wb, "Planilla General - " + limpio + " - grupos de " + GRUPO_PERSONAS + ".xlsx");
-      avisar("Listo: " + fmtN(personas.length) + " personas en " + grupos.length + " grupo(s)" + (sinUbic.length ? " (" + fmtN(sinUbic.length) + " sin ubicación en el mapa, al final)" : "") + ".");
+      const base = "Planilla General - " + limpio + " - grupos de " + GRUPO_PERSONAS;
+      const resumenTxt = "Listo: " + fmtN(personas.length) + " personas en " + grupos.length + " grupo(s)" + (sinUbic.length ? " (" + fmtN(sinUbic.length) + " sin ubicación en el mapa, al final)" : "") + ".";
+
+      let XLSX = null;
+      try { XLSX = await cargarXlsx(); } catch (e) { XLSX = null; }
+      if (XLSX) {
+        const wb = XLSX.utils.book_new();
+        const wsR = XLSX.utils.aoa_to_sheet(resumen);
+        wsR["!cols"] = [{ wch: 16 }, { wch: 10 }, { wch: 26 }, { wch: 60 }];
+        XLSX.utils.book_append_sheet(wb, wsR, "Resumen");
+        hojas.forEach((h) => {
+          const ws = XLSX.utils.aoa_to_sheet([cab].concat(h.filas));
+          ws["!cols"] = anchos.map((w) => ({ wch: w }));
+          XLSX.utils.book_append_sheet(wb, ws, h.nombre);
+        });
+        const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+        descargarArchivo(new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), base + ".xlsx");
+        avisar(resumenTxt + " Se descargó el archivo Excel; buscalo en tus descargas.");
+      } else {
+        // sin el generador de Excel: un solo CSV (separado por punto y coma, como lo abre Excel en español)
+        const celda = (v) => { const t = v == null ? "" : String(v); return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+        const lineas = [cab].concat(...hojas.map((h) => h.filas)).map((f) => f.map(celda).join(";"));
+        descargarArchivo(new Blob(["\ufeff" + lineas.join("\r\n")], { type: "text/csv;charset=utf-8" }), base + ".csv");
+        avisar(resumenTxt + " Se descargó un archivo CSV (se abre con Excel); buscalo en tus descargas.");
+      }
     } catch (e) {
-      avisar("No se pudo armar el Excel. Probá de nuevo en un momento.");
+      console.error(e);
+      avisar("No se pudo armar el Excel (" + (e && e.message ? e.message : "error") + "). Probá de nuevo y, si sigue, avisame con esta frase.");
     } finally {
       btn.disabled = false;
     }
