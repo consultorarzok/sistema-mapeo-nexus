@@ -1016,6 +1016,7 @@
       mapTypeControl: false,
       streetViewControl: false,
       fullscreenControl: false,
+      clickableIcons: false, // los íconos de Google (escuelas, comercios) no se quedan con el clic: el toque llega al punto de la persona
     });
     // "capas" separadas: las instituciones (azul) nunca se borran al mostrar personas
     STATE.institutionMarkers = [];
@@ -1039,7 +1040,7 @@
   // Capa única: todas las personas se dibujan en UN solo <canvas> sobre el mapa, en vez de un marcador de Google
   // por persona (con miles de marcadores el navegador se traba). Cada punto guarda su persona para el toque.
   function crearCapaPersonas(map) {
-    const RADIO = 7, TOQUE = 12;
+    const RADIO = 7, TOQUE = 16;
     class Capa extends google.maps.OverlayView {
       constructor() {
         super();
@@ -1119,11 +1120,22 @@
       if (STATE.mapMode !== "personas") return;
       const pt = capa.cercano(e.latLng);
       if (!pt) return;
-      STATE.infoWindow.setOptions({ pixelOffset: new google.maps.Size(0, -RADIO) });
-      STATE.infoWindow.setContent(popupHtml(pt.p));
-      STATE.infoWindow.setPosition(pt.ll);
-      STATE.infoWindow.open({ map });
-      showSelectedPersonCard(pt.p);
+      // primero la ficha de la persona (siempre se muestra), después el globito sobre el punto
+      try {
+        showSelectedPersonCard(pt.p);
+        const card = document.getElementById("selected-person-card");
+        if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      } catch (err) {
+        console.error("CLIC_PUNTO_FICHA_FALLO", err && err.stack ? err.stack : err);
+      }
+      try {
+        STATE.infoWindow.setOptions({ pixelOffset: new google.maps.Size(0, -RADIO) });
+        STATE.infoWindow.setContent(popupHtml(pt.p));
+        STATE.infoWindow.setPosition(pt.ll);
+        STATE.infoWindow.open({ map });
+      } catch (err) {
+        console.error("CLIC_PUNTO_GLOBITO_FALLO", err && err.stack ? err.stack : err);
+      }
     });
     let ultimoMov = 0;
     map.addListener("mousemove", (e) => {
@@ -1293,6 +1305,7 @@
         position: { lat: inst.lat, lng: inst.lng },
         map: gmChk("inst").checked ? map : null,
         icon: coloredIcon("#2D6CDF"),
+        clickable: !onlyInst, // dentro de una institución, el punto azul no se queda con los toques de las personas cercanas
       });
       marker.addListener("click", () => {
         STATE.infoWindow.setOptions({ pixelOffset: new google.maps.Size(0, 0) });
@@ -1421,6 +1434,7 @@
           strokeOpacity: 0.7,
           fillColor: "#2D6CDF",
           fillOpacity: 0.07,
+          clickable: false, // el círculo no se queda con los toques: los puntos de adentro tienen que abrir su ficha
           map: gmChk("reach").checked ? map : null,
         })
       );
